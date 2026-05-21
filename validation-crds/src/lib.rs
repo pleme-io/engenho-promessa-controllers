@@ -27,7 +27,7 @@ pub mod shared;
 
 pub use ephemeral_tenant::{
     AkeylessEphemeralTenant, AkeylessEphemeralTenantPhase, AkeylessEphemeralTenantSpec,
-    AkeylessEphemeralTenantStatus,
+    AkeylessEphemeralTenantStatus, DigestSetEntry, InfraResourceRef,
 };
 pub use image_validation::{
     AkeylessImageValidation, AkeylessImageValidationPhase, AkeylessImageValidationSpec,
