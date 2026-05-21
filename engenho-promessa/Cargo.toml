@@ -1,0 +1,21 @@
+[package]
+name = "engenho-promessa"
+description = "engenho-promessa binary — registers the per-kind controllers (SecurityController + future SLA/CostBudget/Compliance/CustomerKpi) with engenho's kube-rs informer."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "engenho-promessa"
+path = "src/main.rs"
+
+[dependencies]
+promessa-types = { workspace = true }
+promessa-controller-common = { path = "../promessa-controller-common" }
+security-controller = { path = "../security-controller" }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

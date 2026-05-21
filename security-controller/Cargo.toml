@@ -1,0 +1,20 @@
+[package]
+name = "security-controller"
+description = "Viggy M1 SecurityController — the first TargetController kind. Drives the Akeyless FedRAMP High SCR program (ASM-17571). Diff/classify/decide pure functions over the Security-kind Snapshot composed of cartorio ArtifactState + shinryu scanner findings + tameshi build chain."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+promessa-types = { workspace = true }
+promessa-controller-common = { path = "../promessa-controller-common" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

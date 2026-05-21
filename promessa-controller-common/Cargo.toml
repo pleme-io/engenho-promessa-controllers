@@ -1,0 +1,13 @@
+[package]
+name = "promessa-controller-common"
+description = "Shared helpers across TargetController kinds — trait_laws_obeyed! macro, mock observation sources, golden-trajectory harness."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+promessa-types = { workspace = true }
+serde = { workspace = true }
+proptest = { workspace = true }
