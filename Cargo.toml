@@ -1,6 +1,16 @@
 [workspace]
 resolver = "2"
-members = ["promessa-controller-common", "security-controller", "engenho-promessa"]
+members = [
+  "promessa-controller-common",
+  "security-controller",
+  "engenho-promessa",
+  # AKEYLESS-VALIDATION-PLATFORM (pleme-io/theory) — three CRDs + the
+  # controllers and API binary that drive akeyless-nix-images digests
+  # through the typed deterministic validation chain.
+  "validation-crds",
+  "validation-api",
+  "validation-controllers",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +24,18 @@ authors = ["pleme-io"]
 promessa-controller-common = { path = "promessa-controller-common" }
 security-controller = { path = "security-controller" }
 engenho-promessa = { path = "engenho-promessa" }
+validation-crds = { path = "validation-crds" }
+validation-controllers = { path = "validation-controllers" }
+# axum + transports for the API binary
+axum = { version = "0.7", features = ["ws"] }
+async-graphql = { version = "7" }
+async-graphql-axum = { version = "7" }
+utoipa = { version = "5", features = ["axum_extras"] }
+tower = { version = "0.5" }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+prometheus = { version = "0.14", features = ["process"] }
+url = { version = "2" }
+uuid = { version = "1", features = ["v4", "serde"] }
 promessa-types = { path = "../promessa/promessa-types" }
 promessa-runtime = { path = "../promessa/promessa-runtime" }
 promessa-store = { path = "../promessa/promessa-store" }
@@ -22,8 +44,9 @@ shikumi = { path = "../shikumi" }
 cofre-types = { path = "../cofre/crates/cofre-types" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
+serde_yaml = { version = "0.9" }
 schemars = { version = "0.8", features = ["derive", "chrono"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-std", "io-util", "signal"] }
 async-trait = { version = "0.1" }
 thiserror = { version = "2" }
 anyhow = { version = "1" }

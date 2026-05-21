@@ -1,0 +1,27 @@
+[package]
+name = "validation-crds"
+description = "AkeylessImageValidation / AkeylessEphemeralTenant / ScanJob CRDs — typed Rust surface for the AKEYLESS-VALIDATION-PLATFORM substrate (pleme-io/theory/AKEYLESS-VALIDATION-PLATFORM.md). Single source of truth for both controllers and the validation-api projection."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "validation-crd-export"
+path = "src/bin/export.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+schemars = { workspace = true }
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+promessa-types = { workspace = true }
+
+[dev-dependencies]
+serde_yaml = { workspace = true }

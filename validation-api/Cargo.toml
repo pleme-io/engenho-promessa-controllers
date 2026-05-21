@@ -1,0 +1,39 @@
+[package]
+name = "validation-api"
+description = "akeyless-validation-api — kube-rs informer → REST + GraphQL + WebSocket + MCP + gRPC over the three AKEYLESS-VALIDATION-PLATFORM CRDs. Deterministic projection; never invents state."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "validation-api"
+path = "src/main.rs"
+
+[dependencies]
+validation-crds = { workspace = true }
+promessa-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+futures = { workspace = true }
+clap = { workspace = true }
+# Transport stack
+axum = { workspace = true }
+async-graphql = { workspace = true }
+async-graphql-axum = { workspace = true }
+utoipa = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
