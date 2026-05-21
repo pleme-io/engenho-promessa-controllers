@@ -15,7 +15,10 @@ path = "src/main.rs"
 promessa-types = { workspace = true }
 promessa-controller-common = { path = "../promessa-controller-common" }
 security-controller = { path = "../security-controller" }
+validation-controllers = { path = "../validation-controllers" }
+kube = { workspace = true, features = ["runtime", "client"] }
 tokio = { workspace = true }
 anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

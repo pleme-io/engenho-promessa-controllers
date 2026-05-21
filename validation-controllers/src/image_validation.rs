@@ -326,24 +326,24 @@ async fn handle_gating(
     let severity = ctx.security_controller.classify(&drift);
     let decision = ctx.security_controller.decide(&spec, severity, &drift);
 
-    // Map Decision to GateVerdict + canonical-JSON action.
+    // Map Decision to GateVerdict + canonical-JSON action. The schema
+    // pins `action` to type=object, so empty/no-op decisions render as `{}`.
+    let empty = json!({});
     let (verdict, action_json) = match &decision {
-        promessa_types::Decision::NoAction => {
-            (GateVerdict::Passed, json!(null))
-        }
+        promessa_types::Decision::NoAction => (GateVerdict::Passed, empty.clone()),
         promessa_types::Decision::AutoCorrect(action) => {
-            // Critical → Failed; otherwise Passed (action is forwarding work).
             let verdict = if severity == promessa_types::Severity::Critical {
                 GateVerdict::Failed
             } else {
                 GateVerdict::Passed
             };
-            (verdict, serde_json::to_value(action).unwrap_or(json!(null)))
+            (verdict, serde_json::to_value(action).unwrap_or_else(|_| empty.clone()))
         }
-        promessa_types::Decision::RequireApproval(action) => {
-            (GateVerdict::Quarantined, serde_json::to_value(action).unwrap_or(json!(null)))
-        }
-        promessa_types::Decision::Alert => (GateVerdict::Passed, json!(null)),
+        promessa_types::Decision::RequireApproval(action) => (
+            GateVerdict::Quarantined,
+            serde_json::to_value(action).unwrap_or_else(|_| empty.clone()),
+        ),
+        promessa_types::Decision::Alert => (GateVerdict::Passed, empty.clone()),
         promessa_types::Decision::SuppressedAfterRepeatedFailure { failure_count } => (
             GateVerdict::Quarantined,
             json!({"suppressed": true, "failure_count": failure_count}),

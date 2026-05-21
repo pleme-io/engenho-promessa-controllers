@@ -4,8 +4,16 @@
 
 use chrono::{DateTime, Utc};
 use kube::CustomResource;
-use schemars::JsonSchema;
+use schemars::{r#gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Serialize};
+
+fn preserve_unknown_object_schema(_: &mut SchemaGenerator) -> Schema {
+    serde_json::from_value(serde_json::json!({
+        "type": "object",
+        "x-kubernetes-preserve-unknown-fields": true
+    }))
+    .expect("static schema")
+}
 
 use crate::scan_job::{ScanJobPhase, ScannerKind};
 use crate::shared::{CartorioArtifactState, TypedCondition};
@@ -131,6 +139,7 @@ pub struct GateDecision {
     /// Passed | Failed | Quarantined.
     pub verdict: GateVerdict,
     /// Canonical JSON of the `TypedAction` dispatched (may be Compose-of-N).
+    #[schemars(schema_with = "preserve_unknown_object_schema")]
     pub action: serde_json::Value,
     /// Optional human-readable explanation aggregated from drift entries.
     #[serde(default, skip_serializing_if = "Option::is_none")]

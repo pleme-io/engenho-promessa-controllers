@@ -821,12 +821,15 @@ name = "engenho-promessa"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
+ "kube",
  "promessa-controller-common",
  "promessa-types",
  "security-controller",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "validation-controllers",
 ]
 
 [[package]]
