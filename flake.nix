@@ -11,24 +11,35 @@
       url = "github:pleme-io/substrate";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    crate2nix = {
+      url = "github:nix-community/crate2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     promessa = {
       url = "git+ssh://git@github.com/pleme-io/promessa";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.crate2nix.follows = "crate2nix";
+      inputs.shigoto.follows = "shigoto";
+      inputs.shikumi.follows = "shikumi";
+      inputs.cofre.follows = "cofre";
     };
     shigoto = {
       url = "git+ssh://git@github.com/pleme-io/shigoto";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.crate2nix.follows = "crate2nix";
     };
     shikumi = {
       url = "git+ssh://git@github.com/pleme-io/shikumi";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.crate2nix.follows = "crate2nix";
     };
     cofre = {
       url = "git+ssh://git@github.com/pleme-io/cofre";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.crate2nix.follows = "crate2nix";
     };
   };
-  outputs = inputs @ { self, nixpkgs, flake-utils, substrate, promessa, shigoto, shikumi, cofre, ... }:
+  outputs = inputs @ { self, nixpkgs, flake-utils, substrate, crate2nix, promessa, shigoto, shikumi, cofre, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -56,29 +67,97 @@
           chmod -R +w $out/cofre
         '';
 
-        engenho-promessa = pkgs.rustPlatform.buildRustPackage {
-          pname = "engenho-promessa";
+        # Build both binaries in one workspace cargo invocation — the
+        # output derivation contains $out/bin/engenho-promessa AND
+        # $out/bin/validation-api, ready to lift into separate images.
+        workspaceBinaries = pkgs.rustPlatform.buildRustPackage {
+          pname = "engenho-promessa-workspace";
           version = "0.1.0";
           src = composedSrc;
           sourceRoot = "engenho-promessa-composed-src/engenho-promessa";
           cargoLock.lockFile = ./Cargo.lock;
-          cargoBuildFlags = [ "-p" "engenho-promessa" ];
-          cargoTestFlags  = [ "-p" "engenho-promessa" ];
+          cargoBuildFlags = [ "-p" "engenho-promessa" "-p" "validation-api" "-p" "validation-crds" ];
           doCheck = false;
           nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ openssl ];
         };
+
+        engenho-promessa = workspaceBinaries;
+        validation-api  = workspaceBinaries;
+
+        # ── OCI images via dockerTools.buildLayeredImage ──────────────
+        # Each image is a small layered tarball:
+        #   1. cacert (TLS) + tini (PID 1)
+        #   2. the binary
+        # Architecture: only the binary's target system is built — for
+        # multi-arch images we'd add buildah-style manifests, but
+        # pleme-dev is amd64 so one arch is enough.
+        mkImage = { name, binary, tag }:
+          pkgs.dockerTools.buildLayeredImage {
+            inherit name tag;
+            contents = with pkgs; [
+              cacert
+              tini
+              bashInteractive       # for `kubectl exec ... -- /bin/sh` debugging
+              coreutils
+            ];
+            config = {
+              Entrypoint = [ "/bin/tini" "--" "/bin/${binary}" ];
+              Cmd = [ ];
+              User = "65532:65532";
+              Env = [
+                "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
+                "RUST_LOG=info"
+              ];
+              Labels = {
+                "org.opencontainers.image.source" =
+                  "https://github.com/pleme-io/engenho-promessa-controllers";
+                "org.opencontainers.image.title" = binary;
+                "org.opencontainers.image.version" = tag;
+                "org.opencontainers.image.description" =
+                  "AKEYLESS-VALIDATION-PLATFORM ${binary}";
+                "pleme.io/theory-ref" =
+                  "https://github.com/pleme-io/theory/blob/main/AKEYLESS-VALIDATION-PLATFORM.md";
+              };
+            };
+            extraCommands = ''
+              mkdir -p bin
+              cp ${workspaceBinaries}/bin/${binary} bin/${binary}
+            '';
+          };
+
+        engenho-promessa-image = mkImage {
+          name = "ghcr.io/pleme-io/engenho-promessa";
+          binary = "engenho-promessa";
+          tag = "0.1.0";
+        };
+        validation-api-image = mkImage {
+          name = "ghcr.io/pleme-io/validation-api";
+          binary = "validation-api";
+          tag = "0.1.0";
+        };
       in {
-        packages = { inherit engenho-promessa; default = engenho-promessa; };
+        packages = {
+          inherit engenho-promessa validation-api
+                  engenho-promessa-image validation-api-image;
+          default = engenho-promessa;
+          "image:engenho-promessa" = engenho-promessa-image;
+          "image:validation-api"   = validation-api-image;
+        };
         apps.default = { type = "app"; program = "${engenho-promessa}/bin/engenho-promessa"; };
+        apps.validation-api = { type = "app"; program = "${validation-api}/bin/validation-api"; };
         devShells.default = pkgs.mkShell {
           name = "engenho-promessa-dev";
           packages = with pkgs; [
             rustc cargo rustfmt clippy rust-analyzer
             pkg-config openssl git jq yq-go
+            skopeo
           ];
         };
       }) // {
-        overlays.default = final: _prev: { engenho-promessa = self.packages.${final.system}.engenho-promessa; };
+        overlays.default = final: _prev: {
+          engenho-promessa = self.packages.${final.system}.engenho-promessa;
+          validation-api   = self.packages.${final.system}.validation-api;
+        };
       };
 }
