@@ -11,6 +11,8 @@ use reconciler_engine::{ActionExecutor, EngineConfig, ReconcilerEngine};
 use security_controller::SecurityController;
 use validation_store::ValidationStore;
 
+use crate::events_publisher::EventsPublisher;
+
 #[derive(Clone)]
 pub struct ReconcileCtx {
     pub client: Client,
@@ -29,6 +31,10 @@ pub struct ReconcileCtx {
     /// terminal-phase receipts; the image_validation controller
     /// upserts the run row on every status transition.
     pub validation_store: Arc<ValidationStore>,
+    /// NATS publisher for the typed security-posture event stream.
+    /// `Disconnected` mode when NATS_URL env unset — every emission
+    /// is a typed no-op so dev/test runs need no broker.
+    pub events_publisher: EventsPublisher,
 }
 
 impl ReconcileCtx {
@@ -36,6 +42,7 @@ impl ReconcileCtx {
         client: Client,
         namespace: Option<String>,
         validation_store: Arc<ValidationStore>,
+        events_publisher: EventsPublisher,
     ) -> Self {
         // Engine boot config — endpoints sourced from env so the same
         // binary runs against any cluster's substrate primitives.
@@ -60,6 +67,7 @@ impl ReconcileCtx {
             security_controller: SecurityController,
             action_executor,
             validation_store,
+            events_publisher,
         }
     }
 }

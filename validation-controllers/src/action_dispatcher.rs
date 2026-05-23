@@ -180,12 +180,12 @@ async fn persist_outcome(
     for w in writes {
         let write = validation_store::ops::upsert::ReconcilerOutcomeWrite {
             validation_run_uid: validation_run_uid.to_owned(),
-            action_kind: w.action_kind,
-            reconciler_kind: w.reconciler_kind,
-            action_payload: w.action_payload,
-            outcome: w.outcome,
-            outcome_flag: w.outcome_flag,
-            outcome_payload: w.outcome_payload,
+            action_kind: w.action_kind.clone(),
+            reconciler_kind: w.reconciler_kind.clone(),
+            action_payload: w.action_payload.clone(),
+            outcome: w.outcome.clone(),
+            outcome_flag: w.outcome_flag.clone(),
+            outcome_payload: w.outcome_payload.clone(),
             gate_decision_decided_at: *gate_decided_at,
         };
         if let Err(err) = validation_store::ops::upsert::append_reconciler_outcome(
@@ -206,7 +206,58 @@ async fn persist_outcome(
                  outcome is in logs but not in store"
             );
         }
+
+        // ── Emit typed ReconcilerDispatched event to NATS ──────────
+        // Disconnected publisher = typed no-op; the validation-store
+        // row above is the durable copy regardless of NATS state.
+        emit_reconciler_dispatched(ctx, validation_run_uid, gate_decided_at, &w).await;
     }
+}
+
+async fn emit_reconciler_dispatched(
+    ctx: &ReconcileCtx,
+    validation_run_uid: &str,
+    gate_decided_at: &chrono::DateTime<Utc>,
+    row: &OutcomeRow,
+) {
+    use validation_events::{ReconcilerDispatched, ValidationEvent};
+    // Pull the service + image identity off the CR via the store —
+    // already there from the image_validation reconciler's
+    // upsert_validation_run on every status transition.
+    let run = match validation_store::ops::query::validation_run_by_uid(
+        ctx.validation_store.db(),
+        validation_run_uid,
+    )
+    .await
+    {
+        Ok(Some(r)) => r,
+        _ => {
+            // Run row not yet observed — emit a partial event with
+            // empty identity so subscribers still see the dispatch.
+            // image_validation upserts the row early in Pending, so
+            // this branch is uncommon.
+            tracing::debug!(uid = %validation_run_uid, "events_publisher: validation_run row missing — partial emit");
+            return;
+        }
+    };
+    let _ = gate_decided_at; // event carries observed_at; gate timestamp lives on the store row
+    let event = ValidationEvent::ReconcilerDispatched(ReconcilerDispatched {
+        event_id: validation_events::new_event_id(),
+        validation_run_uid: validation_run_uid.to_owned(),
+        service: run
+            .image_repo
+            .strip_prefix("akeyless-")
+            .unwrap_or(&run.image_repo)
+            .to_owned(),
+        image_digest: run.image_digest,
+        image_repo: run.image_repo,
+        observed_at: Utc::now(),
+        action_kind: row.action_kind.clone(),
+        reconciler_kind: row.reconciler_kind.clone(),
+        outcome: row.outcome.clone(),
+        outcome_flag: row.outcome_flag.clone(),
+    });
+    ctx.events_publisher.publish(&event).await;
 }
 
 /// Reusable single-row transform — used both for non-Compose

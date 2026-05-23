@@ -23,6 +23,7 @@ use validation_store::ValidationStore;
 pub mod action_dispatcher;
 pub mod context;
 pub mod ephemeral_tenant;
+pub mod events_publisher;
 pub mod image_validation;
 pub mod outcome_chain;
 pub mod scan_job;
@@ -41,7 +42,17 @@ pub async fn run_all(
     namespace: Option<String>,
     validation_store: Arc<ValidationStore>,
 ) -> anyhow::Result<()> {
-    let ctx = Arc::new(ReconcileCtx::new(client, namespace, validation_store));
+    let events_publisher = events_publisher::EventsPublisher::from_env().await;
+    tracing::info!(
+        nats_connected = events_publisher.is_connected(),
+        "validation-controllers booting"
+    );
+    let ctx = Arc::new(ReconcileCtx::new(
+        client,
+        namespace,
+        validation_store,
+        events_publisher,
+    ));
 
     let h_iv = tokio::spawn(image_validation::run(ctx.clone()));
     let h_eph = tokio::spawn(ephemeral_tenant::run(ctx.clone()));
