@@ -72,12 +72,23 @@
         # $out/bin/validation-api, ready to lift into separate images.
         workspaceBinaries = pkgs.rustPlatform.buildRustPackage {
           pname = "engenho-promessa-workspace";
-          version = "0.1.0";
+          version = "0.3.0";
           src = composedSrc;
           sourceRoot = "engenho-promessa-composed-src/engenho-promessa";
           cargoLock.lockFile = ./Cargo.lock;
-          # Version 0.2.0 — adds D1 reconciler-engine + action_dispatcher,
-          # D2 validation-store, and D6 outcome persistence wiring.
+          # Version 0.3.0 — adds scanner-catalog (reusable substrate
+          # crate with typed ScannerImpl per ScannerKind + per-format
+          # output parsers). validation-controllers/scan_job.rs now
+          # consumes the catalog instead of inline match-arms. New
+          # OSS scanner variants: Grype, Syft, Trufflehog, KubeLinter,
+          # KubeBench, KubeHunter, Polaris (alongside existing Trivy,
+          # Semgrep, Zap, StigCisValidator).
+          #
+          # 0.2.0: D1 reconciler-engine + action_dispatcher, D2
+          # validation-store, D6 outcome persistence wiring.
+          # 0.2.1: image refs off ghcr.io onto cluster-internal Zot;
+          # laptop push via kubectl port-forward + cosign keyless.
+          #
           # FOLLOWUP(D-OP-9): refactor to use substrate's
           # `lib/build/rust/tool-image-flake.nix` instead of the
           # inline dockerTools.buildLayeredImage below — image-sync's
@@ -89,6 +100,7 @@
             "-p" "validation-store"
             "-p" "reconciler-engine"
             "-p" "validation-controllers"
+            "-p" "scanner-catalog"
           ];
           doCheck = false;
           nativeBuildInputs = with pkgs; [ pkg-config ];
@@ -152,12 +164,12 @@
         engenho-promessa-image = mkImage {
           name = "zot-dev.quero.cloud/pleme-io/engenho-promessa";
           binary = "engenho-promessa";
-          tag = "0.2.0";
+          tag = "0.3.0";
         };
         validation-api-image = mkImage {
           name = "zot-dev.quero.cloud/pleme-io/validation-api";
           binary = "validation-api";
-          tag = "0.2.0";
+          tag = "0.3.0";
         };
       in {
         packages = {

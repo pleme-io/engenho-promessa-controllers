@@ -8,22 +8,57 @@ use serde::{Deserialize, Serialize};
 
 use crate::shared::TypedCondition;
 
-/// One of the 11 typed scanner kinds — matches
+/// The canonical typed scanner kinds — every scanner the validation
+/// platform knows how to spawn. Matches
 /// `security-controller::RequiredScanner` byte-for-byte (Compounding #1:
-/// one source of truth for the scanner enum).
+/// one source of truth for the scanner enum, fleet-wide).
+///
+/// ## Reusability across ecosystems
+///
+/// This enum is the typed contract reused by:
+/// - `validation-controllers::scan_job` — spawns Kubernetes Jobs per kind
+/// - `scanner-catalog` (sibling crate) — maps each kind to its OCI image
+///   + CLI args template + output parser shape
+/// - `security-controller` — projects `RequiredScanner` from this set
+/// - `helmworks-akeyless/charts/lareira-akeyless-validation` — values
+///   block per kind for enable/disable + image override
+/// - any future consumer (kenshi BuildPipeline, etc.) just imports it
+///
+/// Three classes of variants:
+/// - **OSS CNCF-leaning** (default-enabled, no creds required): Trivy,
+///   Grype, Syft, Trufflehog, Semgrep, KubeLinter, KubeBench,
+///   KubeHunter, Polaris, Zap, StigCisValidator
+/// - **commercial / SaaS** (default-disabled, gated on cofre creds):
+///   Snyk, DockerScout, JfrogXray, Wiz, PrismaCloud, BurpEnterprise
+/// - **heavy / setup-required** (default-disabled, opt-in): Codeql
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ScannerKind {
+    // ── OSS CNCF (CVE) ─────────────────────────────────────────────
     Trivy,
+    Grype,
+    // ── OSS CNCF (SBOM) ────────────────────────────────────────────
+    Syft,
+    // ── OSS CNCF (secrets) ─────────────────────────────────────────
+    Trufflehog,
+    // ── OSS CNCF (SAST) ────────────────────────────────────────────
+    Semgrep,
+    // ── OSS CNCF (K8s posture / hardening) ─────────────────────────
+    KubeLinter,
+    KubeBench,
+    KubeHunter,
+    Polaris,
+    StigCisValidator,
+    // ── OSS DAST ───────────────────────────────────────────────────
+    Zap,
+    // ── Commercial (default-disabled; require credentials) ─────────
     Snyk,
     DockerScout,
     JfrogXray,
     Wiz,
     PrismaCloud,
-    Semgrep,
-    Codeql,
     BurpEnterprise,
-    Zap,
-    StigCisValidator,
+    // ── Heavy / setup-required ─────────────────────────────────────
+    Codeql,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

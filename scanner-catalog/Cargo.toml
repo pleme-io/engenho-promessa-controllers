@@ -1,0 +1,16 @@
+[package]
+name = "scanner-catalog"
+description = "Typed catalog of every scanner the AKEYLESS-VALIDATION-PLATFORM knows how to spawn. One `ScannerImpl` per `validation_crds::ScannerKind`: OCI image + args template + target-field shape + output-format parser. Reusable substrate component — `validation-controllers::scan_job` is the primary consumer, but any other workflow (kenshi BuildPipeline, future tatara processes, SDK generators) can import the same catalog to keep scanner provisioning fleet-coherent (Compounding #1: solve once)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+validation-crds = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

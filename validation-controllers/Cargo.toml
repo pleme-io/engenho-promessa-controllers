@@ -13,6 +13,7 @@ promessa-types = { workspace = true }
 security-controller = { path = "../security-controller" }
 reconciler-engine = { path = "../reconciler-engine" }
 validation-store = { path = "../validation-store" }
+scanner-catalog = { path = "../scanner-catalog" }
 promessa-controller-common = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

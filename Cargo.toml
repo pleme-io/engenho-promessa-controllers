@@ -22,6 +22,13 @@ members = [
   # every API face (REST/gRPC/GraphQL/MCP/SDK) projects from. Adopts
   # the kiroku MetadataStore dual sync/async runtime pattern.
   "validation-store",
+  # Scanner catalog — typed ScannerImpl per ScannerKind (OCI image +
+  # args template + target field + output format parser). Reusable
+  # substrate component fleet-wide — validation-controllers is the
+  # primary consumer, but kenshi BuildPipeline / future workflows /
+  # SDK generators all import the same catalog so scanner provisioning
+  # stays fleet-coherent (Compounding #1: solve once).
+  "scanner-catalog",
 ]
 
 [workspace.package]

@@ -3162,6 +3162,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
+name = "scanner-catalog"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "validation-crds",
+]
+
+[[package]]
 name = "schannel"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4467,6 +4479,7 @@ dependencies = [
  "promessa-controller-common",
  "promessa-types",
  "reconciler-engine",
+ "scanner-catalog",
  "security-controller",
  "serde",
  "serde_json",

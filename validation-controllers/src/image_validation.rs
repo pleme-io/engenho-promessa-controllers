@@ -388,16 +388,23 @@ fn scanner_kebab(s: RequiredScanner) -> &'static str {
     use RequiredScanner::*;
     match s {
         Trivy => "trivy",
+        Grype => "grype",
+        Syft => "syft",
+        Trufflehog => "trufflehog",
+        Semgrep => "semgrep",
+        KubeLinter => "kubelinter",
+        KubeBench => "kubebench",
+        KubeHunter => "kubehunter",
+        Polaris => "polaris",
+        StigCisValidator => "stig",
+        Zap => "zap",
         Snyk => "snyk",
         DockerScout => "scout",
         JfrogXray => "xray",
         Wiz => "wiz",
         PrismaCloud => "prisma",
-        Semgrep => "semgrep",
-        Codeql => "codeql",
         BurpEnterprise => "burp",
-        Zap => "zap",
-        StigCisValidator => "stig",
+        Codeql => "codeql",
     }
 }
 
@@ -406,26 +413,41 @@ fn scanner_kind_from_required(s: RequiredScanner) -> ScannerKind {
     use ScannerKind as K;
     match s {
         R::Trivy => K::Trivy,
+        R::Grype => K::Grype,
+        R::Syft => K::Syft,
+        R::Trufflehog => K::Trufflehog,
+        R::Semgrep => K::Semgrep,
+        R::KubeLinter => K::KubeLinter,
+        R::KubeBench => K::KubeBench,
+        R::KubeHunter => K::KubeHunter,
+        R::Polaris => K::Polaris,
+        R::StigCisValidator => K::StigCisValidator,
+        R::Zap => K::Zap,
         R::Snyk => K::Snyk,
         R::DockerScout => K::DockerScout,
         R::JfrogXray => K::JfrogXray,
         R::Wiz => K::Wiz,
         R::PrismaCloud => K::PrismaCloud,
-        R::Semgrep => K::Semgrep,
-        R::Codeql => K::Codeql,
         R::BurpEnterprise => K::BurpEnterprise,
-        R::Zap => K::Zap,
-        R::StigCisValidator => K::StigCisValidator,
+        R::Codeql => K::Codeql,
     }
 }
 
 fn scanner_class_for(s: RequiredScanner) -> ScannerClass {
     use RequiredScanner::*;
     match s {
-        Trivy | Snyk | DockerScout | JfrogXray | Wiz | PrismaCloud => ScannerClass::Cve,
+        // CVE scanners (vulnerabilities in OCI image layers)
+        Trivy | Grype | Snyk | DockerScout | JfrogXray | Wiz | PrismaCloud => ScannerClass::Cve,
+        // SBOM (catalog only — no findings, emits package set)
+        Syft => ScannerClass::Cve,
+        // Secret/credential scanning of source trees
+        Trufflehog => ScannerClass::Sast,
+        // SAST (source-level static analysis)
         Semgrep | Codeql => ScannerClass::Sast,
+        // K8s posture + hardening scanners
+        KubeLinter | KubeBench | KubeHunter | Polaris | StigCisValidator => ScannerClass::Hardening,
+        // DAST (runtime probing of live tenant URL)
         BurpEnterprise | Zap => ScannerClass::Dast,
-        StigCisValidator => ScannerClass::Hardening,
     }
 }
 
@@ -530,16 +552,23 @@ fn scanner_required_from_kind(k: ScannerKind) -> RequiredScanner {
     use ScannerKind as K;
     match k {
         K::Trivy => R::Trivy,
+        K::Grype => R::Grype,
+        K::Syft => R::Syft,
+        K::Trufflehog => R::Trufflehog,
+        K::Semgrep => R::Semgrep,
+        K::KubeLinter => R::KubeLinter,
+        K::KubeBench => R::KubeBench,
+        K::KubeHunter => R::KubeHunter,
+        K::Polaris => R::Polaris,
+        K::StigCisValidator => R::StigCisValidator,
+        K::Zap => R::Zap,
         K::Snyk => R::Snyk,
         K::DockerScout => R::DockerScout,
         K::JfrogXray => R::JfrogXray,
         K::Wiz => R::Wiz,
         K::PrismaCloud => R::PrismaCloud,
-        K::Semgrep => R::Semgrep,
-        K::Codeql => R::Codeql,
         K::BurpEnterprise => R::BurpEnterprise,
-        K::Zap => R::Zap,
-        K::StigCisValidator => R::StigCisValidator,
+        K::Codeql => R::Codeql,
     }
 }
 

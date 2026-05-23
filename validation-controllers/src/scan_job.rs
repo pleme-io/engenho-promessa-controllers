@@ -19,7 +19,7 @@ use kube::{Api, ResourceExt};
 use serde_json::json;
 use tracing::{info, warn};
 use validation_crds::{
-    AttestationRef, ScanFinding, ScanFindingSeverity, ScanJob, ScanJobPhase, ScannerKind,
+    AttestationRef, ScanFinding, ScanJob, ScanJobPhase, ScannerKind,
 };
 
 use crate::context::ReconcileCtx;
@@ -234,30 +234,20 @@ fn render_job(job_name: &str, sj: &ScanJob) -> Job {
     }
 }
 
+/// Resolve (image, args) for a ScanJob from the canonical
+/// `scanner-catalog` (reusable substrate). Replaces the prior
+/// match-arm wall — every catalog change immediately propagates here.
 fn scanner_image_and_args(sj: &ScanJob) -> (String, Vec<String>) {
-    match sj.spec.scanner {
-        ScannerKind::Trivy => (
-            "aquasec/trivy:0.50.0".into(),
-            vec![
-                "image".into(),
-                "--format=json".into(),
-                "--severity=CRITICAL,HIGH,MEDIUM".into(),
-                "--output=/scan/result.json".into(),
-                sj.spec
-                    .target_digest
-                    .clone()
-                    .unwrap_or_else(|| "alpine:3.18".into()),
-            ],
-        ),
-        _ => (
-            "alpine:3.18".into(),
-            vec![
-                "sh".into(),
-                "-c".into(),
-                "echo '{\"Results\":[]}' > /scan/result.json".into(),
-            ],
-        ),
-    }
+    use scanner_catalog::{Catalog, TargetField};
+    let entry = Catalog::for_kind(sj.spec.scanner);
+    let target = match entry.target_field {
+        TargetField::Digest => sj.spec.target_digest.as_deref(),
+        TargetField::Source => sj.spec.target_source.as_deref(),
+        TargetField::TenantUrl => sj.spec.target_tenant_url.as_deref(),
+        TargetField::None => None,
+    };
+    let args = entry.args.render(target);
+    (entry.image.to_owned(), args)
 }
 
 fn owner_refs_of(
@@ -338,54 +328,29 @@ async fn collect_results(
     Ok(Some((findings, hash)))
 }
 
+/// Parse scanner stdout via the canonical `scanner-catalog::parsers`
+/// dispatch. The catalog owns the output-format → parser mapping;
+/// this function is the substrate-facing seam.
+///
+/// On `ParserError::NoParser` (scanners we can spawn but don't yet
+/// interpret — commercial / heavy), returns an empty Vec with a
+/// tracing warning so operators see the scanner ran but didn't
+/// surface. On `ParserError::Json` (schema drift / regression),
+/// returns empty + a tracing error.
 fn parse_scanner_output(raw: &str, scanner: ScannerKind) -> Vec<ScanFinding> {
-    let Some(start) = raw.find('{') else {
-        return vec![];
-    };
-    let json_slice = &raw[start..];
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(json_slice) else {
-        return vec![];
-    };
-    match scanner {
-        ScannerKind::Trivy => parse_trivy(&value, scanner),
-        _ => vec![],
-    }
-}
-
-fn parse_trivy(v: &serde_json::Value, scanner: ScannerKind) -> Vec<ScanFinding> {
-    let mut out = vec![];
-    let results = v.get("Results").and_then(|x| x.as_array()).cloned().unwrap_or_default();
-    for r in &results {
-        let vulns = r.get("Vulnerabilities").and_then(|x| x.as_array()).cloned().unwrap_or_default();
-        for u in &vulns {
-            let cve_id = u.get("VulnerabilityID").and_then(|x| x.as_str()).map(String::from);
-            let severity_str = u.get("Severity").and_then(|x| x.as_str()).unwrap_or("MEDIUM");
-            let severity = match severity_str.to_uppercase().as_str() {
-                "CRITICAL" => ScanFindingSeverity::Critical,
-                "HIGH" => ScanFindingSeverity::High,
-                "MEDIUM" => ScanFindingSeverity::Medium,
-                _ => ScanFindingSeverity::Low,
-            };
-            let fixed_in = u.get("FixedVersion").and_then(|x| x.as_str()).map(String::from);
-            let cvss_v3 = u
-                .get("CVSS")
-                .and_then(|c| c.as_object())
-                .and_then(|m| m.values().next())
-                .and_then(|v| v.get("V3Score"))
-                .and_then(|x| x.as_f64())
-                .map(|f| f as f32);
-            let message = u.get("Title").and_then(|x| x.as_str()).map(String::from);
-            out.push(ScanFinding {
-                scanner,
-                cve_id,
-                severity,
-                first_seen: Utc::now(),
-                fixed_in,
-                exception_id: None,
-                cvss_v3,
-                message,
-            });
+    match scanner_catalog::parse_scanner_output(raw, scanner) {
+        Ok(findings) => findings,
+        Err(scanner_catalog::ParserError::NoParser { scanner }) => {
+            tracing::warn!(
+                ?scanner,
+                "scanner-catalog has no parser yet (OutputFormat::NoOp) — \
+                 findings not surfaced for this run"
+            );
+            vec![]
+        }
+        Err(err) => {
+            tracing::error!(?scanner, %err, "scanner-catalog parser error");
+            vec![]
         }
     }
-    out
 }

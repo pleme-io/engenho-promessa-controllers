@@ -53,15 +53,23 @@ impl Default for SecuritySpec {
                 RequiredAttestation::SlsaProvenance,
             ]
             .into(),
+            // Default OSS pack — every CNCF-leaning scanner the
+            // platform can run without credentials. Commercial
+            // scanners (Snyk/Wiz/PrismaCloud/etc.) are opt-in via the
+            // promessa spec (require cofre-resolved tokens). Heavy
+            // setup-required scanners (Codeql) also opt-in.
             required_scanners: [
                 RequiredScanner::Trivy,
-                RequiredScanner::Snyk,
-                RequiredScanner::DockerScout,
-                RequiredScanner::JfrogXray,
-                RequiredScanner::Wiz,
-                RequiredScanner::PrismaCloud,
+                RequiredScanner::Grype,
+                RequiredScanner::Syft,
+                RequiredScanner::Trufflehog,
                 RequiredScanner::Semgrep,
+                RequiredScanner::KubeLinter,
+                RequiredScanner::KubeBench,
+                RequiredScanner::KubeHunter,
+                RequiredScanner::Polaris,
                 RequiredScanner::StigCisValidator,
+                RequiredScanner::Zap,
             ]
             .into(),
             harbor_forwarding_enabled: false,
@@ -115,20 +123,39 @@ pub enum FindingSeverity {
     Critical,
 }
 
+/// Compound-direct mirror of [`validation_crds::ScannerKind`] —
+/// VIGGY-AUTHORING §3.3 wrap-not-compete keeps these in sync arm-for-arm.
+/// Helpers in `validation-controllers::image_validation` translate
+/// between this and the CRD enum.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "kebab-case")]
 pub enum RequiredScanner {
+    // OSS CVE
     Trivy,
+    Grype,
+    // OSS SBOM
+    Syft,
+    // OSS secrets
+    Trufflehog,
+    // OSS SAST
+    Semgrep,
+    // OSS K8s posture / hardening
+    KubeLinter,
+    KubeBench,
+    KubeHunter,
+    Polaris,
+    StigCisValidator,
+    // OSS DAST
+    Zap,
+    // Commercial
     Snyk,
     DockerScout,
     JfrogXray,
     Wiz,
     PrismaCloud,
-    Semgrep,
-    Codeql,
     BurpEnterprise,
-    Zap,
-    StigCisValidator,
+    // Heavy / setup-required
+    Codeql,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -415,15 +442,20 @@ mod tests {
                 RequiredAttestation::SlsaProvenance,
             ]
             .into(),
+            // Clean fixture — reports every scanner from the default
+            // OSS pack so `missing-scanner` drift never fires here.
             scanners_reported: [
                 RequiredScanner::Trivy,
-                RequiredScanner::Snyk,
-                RequiredScanner::DockerScout,
-                RequiredScanner::JfrogXray,
-                RequiredScanner::Wiz,
-                RequiredScanner::PrismaCloud,
+                RequiredScanner::Grype,
+                RequiredScanner::Syft,
+                RequiredScanner::Trufflehog,
                 RequiredScanner::Semgrep,
+                RequiredScanner::KubeLinter,
+                RequiredScanner::KubeBench,
+                RequiredScanner::KubeHunter,
+                RequiredScanner::Polaris,
                 RequiredScanner::StigCisValidator,
+                RequiredScanner::Zap,
             ]
             .into(),
         }
@@ -557,7 +589,9 @@ mod tests {
     fn missing_scanner_classifies_functional() {
         let s = SecuritySpec::default();
         let mut obs = clean_obs("mark");
-        obs.scanners_reported.remove(&RequiredScanner::Wiz);
+        // Remove an OSS default-required scanner — Grype is in the
+        // default set after the 2026-05-22 scanner-catalog refactor.
+        obs.scanners_reported.remove(&RequiredScanner::Grype);
         let snap = SecuritySnapshot {
             observed_at: now(),
             image_digests: vec![obs],
