@@ -10,6 +10,11 @@ members = [
   "validation-crds",
   "validation-api",
   "validation-controllers",
+  # Reconciler engine — universal dispatcher for
+  # TypedAction::ReconcilerApply emissions. Houses the concrete
+  # Reconciler impls (CartorioAdmit / GhcrTagRevoke / HarborMirror)
+  # per VIGGY-LEGOS Part IV + CONVERGENCE-SUBSTRATE §III.2.
+  "reconciler-engine",
 ]
 
 [workspace.package]

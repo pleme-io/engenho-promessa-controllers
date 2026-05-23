@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let client = Client::try_default().await?;
     tracing::info!(
         namespace = ?args.namespace,
-        "engenho-promessa — booting validation-controllers (4 reconcilers)"
+        "engenho-promessa — booting validation-controllers (5 reconcilers)"
     );
     validation_controllers::run_all(client, args.namespace).await
 }

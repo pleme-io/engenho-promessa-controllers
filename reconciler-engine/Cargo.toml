@@ -1,0 +1,26 @@
+[package]
+name = "reconciler-engine"
+description = "Viggy M1.5 Reconciler engine — the universal dispatcher for TypedAction::ReconcilerApply emissions. Houses the concrete Reconciler impls per ReconcilerKind (CartorioAdmit, GhcrTagRevoke, HarborMirror, ...) that wrap existing substrate primitives (cartorio HTTP, Zot registry, skopeo, ...) per the wrap-not-compete invariant (VIGGY-AUTHORING §3.3)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+promessa-types = { workspace = true }
+promessa-controller-common = { path = "../promessa-controller-common" }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+url = { version = "2" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { version = "0.6" }
