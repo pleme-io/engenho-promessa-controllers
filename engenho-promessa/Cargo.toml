@@ -16,6 +16,7 @@ promessa-types = { workspace = true }
 promessa-controller-common = { path = "../promessa-controller-common" }
 security-controller = { path = "../security-controller" }
 validation-controllers = { path = "../validation-controllers" }
+validation-store = { path = "../validation-store" }
 kube = { workspace = true, features = ["runtime", "client"] }
 tokio = { workspace = true }
 anyhow = { workspace = true }

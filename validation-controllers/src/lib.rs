@@ -18,6 +18,7 @@
 use std::sync::Arc;
 
 use kube::Client;
+use validation_store::ValidationStore;
 
 pub mod action_dispatcher;
 pub mod context;
@@ -35,8 +36,12 @@ pub use scan_job::ScanJobController;
 /// Spawn all five reconcilers concurrently. Returns when any one
 /// terminates (typically meaning the cluster lost connection — caller
 /// should restart the process per the K8s deployment liveness probe).
-pub async fn run_all(client: Client, namespace: Option<String>) -> anyhow::Result<()> {
-    let ctx = Arc::new(ReconcileCtx::new(client, namespace));
+pub async fn run_all(
+    client: Client,
+    namespace: Option<String>,
+    validation_store: Arc<ValidationStore>,
+) -> anyhow::Result<()> {
+    let ctx = Arc::new(ReconcileCtx::new(client, namespace, validation_store));
 
     let h_iv = tokio::spawn(image_validation::run(ctx.clone()));
     let h_eph = tokio::spawn(ephemeral_tenant::run(ctx.clone()));

@@ -76,7 +76,20 @@
           src = composedSrc;
           sourceRoot = "engenho-promessa-composed-src/engenho-promessa";
           cargoLock.lockFile = ./Cargo.lock;
-          cargoBuildFlags = [ "-p" "engenho-promessa" "-p" "validation-api" "-p" "validation-crds" ];
+          # Version 0.2.0 — adds D1 reconciler-engine + action_dispatcher,
+          # D2 validation-store, and D6 outcome persistence wiring.
+          # FOLLOWUP(D-OP-9): refactor to use substrate's
+          # `lib/build/rust/tool-image-flake.nix` instead of the
+          # inline dockerTools.buildLayeredImage below — image-sync's
+          # `flake.nix:30-46` is the canonical template.
+          cargoBuildFlags = [
+            "-p" "engenho-promessa"
+            "-p" "validation-api"
+            "-p" "validation-crds"
+            "-p" "validation-store"
+            "-p" "reconciler-engine"
+            "-p" "validation-controllers"
+          ];
           doCheck = false;
           nativeBuildInputs = with pkgs; [ pkg-config ];
           buildInputs = with pkgs; [ openssl ];
@@ -129,12 +142,12 @@
         engenho-promessa-image = mkImage {
           name = "ghcr.io/pleme-io/engenho-promessa";
           binary = "engenho-promessa";
-          tag = "0.1.0";
+          tag = "0.2.0";
         };
         validation-api-image = mkImage {
           name = "ghcr.io/pleme-io/validation-api";
           binary = "validation-api";
-          tag = "0.1.0";
+          tag = "0.2.0";
         };
       in {
         packages = {

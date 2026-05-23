@@ -1,13 +1,15 @@
 //! Shared reconciler context — a single `ReconcileCtx` is passed to
 //! every reconcile-call across all five controllers. Holds the kube
 //! client + namespace scope + typed deps (security-controller
-//! SecurityController, reconciler-engine ActionExecutor).
+//! SecurityController, reconciler-engine ActionExecutor,
+//! validation-store ValidationStore).
 
 use std::sync::Arc;
 
 use kube::Client;
 use reconciler_engine::{ActionExecutor, EngineConfig, ReconcilerEngine};
 use security_controller::SecurityController;
+use validation_store::ValidationStore;
 
 #[derive(Clone)]
 pub struct ReconcileCtx {
@@ -22,10 +24,19 @@ pub struct ReconcileCtx {
     /// concrete Reconcilers (CartorioAdmit / GhcrTagRevoke /
     /// HarborMirror).
     pub action_executor: Arc<ActionExecutor>,
+    /// Durable validation persistence — the action_dispatcher writes
+    /// reconciler outcomes here; the outcome_chain appender writes
+    /// terminal-phase receipts; the image_validation controller
+    /// upserts the run row on every status transition.
+    pub validation_store: Arc<ValidationStore>,
 }
 
 impl ReconcileCtx {
-    pub fn new(client: Client, namespace: Option<String>) -> Self {
+    pub fn new(
+        client: Client,
+        namespace: Option<String>,
+        validation_store: Arc<ValidationStore>,
+    ) -> Self {
         // Engine boot config — endpoints sourced from env so the same
         // binary runs against any cluster's substrate primitives.
         // Per pleme-dev defaults (cartorio in cartorio ns, Zot in
@@ -48,6 +59,7 @@ impl ReconcileCtx {
             namespace,
             security_controller: SecurityController,
             action_executor,
+            validation_store,
         }
     }
 }

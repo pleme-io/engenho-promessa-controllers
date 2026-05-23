@@ -1055,6 +1055,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "validation-controllers",
+ "validation-store",
 ]
 
 [[package]]
@@ -4473,6 +4474,7 @@ dependencies = [
  "tokio",
  "tracing",
  "validation-crds",
+ "validation-store",
 ]
 
 [[package]]

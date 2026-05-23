@@ -139,10 +139,114 @@ async fn handle(
     let dispatched_at = Utc::now();
     let outcome = ctx.action_executor.execute(&action).await;
     log_outcome(&name, &gate.decided_at, dispatched_at, &action, &outcome);
+    persist_outcome(&ctx, &uid, &gate.decided_at, &action, &outcome).await;
+}
 
-    // FOLLOWUP(D7): persist `(action, outcome, dispatched_at,
-    // gate.decided_at)` to `.status.reconcilerOutcomes[]` and append
-    // a typed OutcomeReceipt to the cluster's outcome-chain bucket.
+/// Persist the dispatch tuple `(action, outcome, gate.decided_at,
+/// dispatched_at)` to `validation_store::reconciler_outcomes`. For
+/// `TypedAction::Compose`, the engine returns a single nested
+/// receipt; we flatten one row per step so query patterns like
+/// "all reconciler dispatches for a digest" return granular results.
+///
+/// FOLLOWUP(D7): also append a typed OutcomeReceipt to the cluster's
+/// outcome-chain bucket (tameshi-signed) — this row is the audit
+/// source for that receipt.
+async fn persist_outcome(
+    ctx: &ReconcileCtx,
+    validation_run_uid: &str,
+    gate_decided_at: &chrono::DateTime<Utc>,
+    action: &TypedAction,
+    outcome: &ErasedOutcome,
+) {
+    // Flatten Compose into one row per step (matching the
+    // ComposeReceipt's order); single actions get exactly one row.
+    let writes = match (action, outcome) {
+        (TypedAction::Compose(steps), ErasedOutcome::Applied { receipt }) => {
+            // Engine wraps Compose into `Applied { receipt: ComposeReceipt }`.
+            let parsed: Option<reconciler_engine::ComposeReceipt> =
+                serde_json::from_value(receipt.clone()).ok();
+            match parsed {
+                Some(compose) => steps
+                    .iter()
+                    .zip(compose.steps.iter())
+                    .map(|(step, step_outcome)| outcome_row(step, step_outcome))
+                    .collect::<Vec<_>>(),
+                None => vec![outcome_row(action, outcome)],
+            }
+        }
+        _ => vec![outcome_row(action, outcome)],
+    };
+
+    for w in writes {
+        let write = validation_store::ops::upsert::ReconcilerOutcomeWrite {
+            validation_run_uid: validation_run_uid.to_owned(),
+            action_kind: w.action_kind,
+            reconciler_kind: w.reconciler_kind,
+            action_payload: w.action_payload,
+            outcome: w.outcome,
+            outcome_flag: w.outcome_flag,
+            outcome_payload: w.outcome_payload,
+            gate_decision_decided_at: *gate_decided_at,
+        };
+        if let Err(err) = validation_store::ops::upsert::append_reconciler_outcome(
+            ctx.validation_store.db(),
+            write,
+        )
+        .await
+        {
+            // Persistence failure is recorded but doesn't fail the
+            // dispatch — the outcome was already applied to the
+            // wrapped substrate primitive and logged. A subsequent
+            // reconcile will retry the persistence via the dedupe
+            // path (next gate decision will land cleanly).
+            tracing::warn!(
+                validation_run_uid = %validation_run_uid,
+                error = %err,
+                "validation-store append_reconciler_outcome failed — \
+                 outcome is in logs but not in store"
+            );
+        }
+    }
+}
+
+/// Reusable single-row transform — used both for non-Compose
+/// dispatches and per-step inside a Compose flattening.
+fn outcome_row(action: &TypedAction, outcome: &ErasedOutcome) -> OutcomeRow {
+    let (outcome_label, outcome_flag, outcome_payload) = match outcome {
+        ErasedOutcome::Applied { receipt } => {
+            ("applied", None, Some(receipt.clone()))
+        }
+        ErasedOutcome::AlreadyConverged => ("already-converged", None, None),
+        ErasedOutcome::FlagGated { flag } => {
+            ("flag-gated", Some(flag.clone()), None)
+        }
+        ErasedOutcome::Failed { error } => (
+            "failed",
+            None,
+            Some(serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        ),
+    };
+    let reconciler_kind = match action {
+        TypedAction::ReconcilerApply { reconciler, .. } => Some(format!("{reconciler:?}")),
+        _ => None,
+    };
+    OutcomeRow {
+        action_kind: action_label(action).to_owned(),
+        reconciler_kind,
+        action_payload: serde_json::to_value(action).unwrap_or(serde_json::Value::Null),
+        outcome: outcome_label.to_owned(),
+        outcome_flag,
+        outcome_payload,
+    }
+}
+
+struct OutcomeRow {
+    action_kind: String,
+    reconciler_kind: Option<String>,
+    action_payload: serde_json::Value,
+    outcome: String,
+    outcome_flag: Option<String>,
+    outcome_payload: Option<serde_json::Value>,
 }
 
 fn log_outcome(
