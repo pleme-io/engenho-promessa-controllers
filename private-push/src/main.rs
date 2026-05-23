@@ -1,7 +1,11 @@
 //! `private-push` — typed Rust replacement for the shell scripts.
 //!
 //! Pushes OCI images from a local nix build to the cluster-singleton
-//! Zot, bypassing Cloudflare Edge entirely. The byte path:
+//! Zot, bypassing Cloudflare Edge entirely; then optionally creates
+//! AkeylessImageValidation CRs so every pushed digest enters the
+//! validation pipeline.
+//!
+//! The byte path for the push subcommands:
 //!
 //! ```text
 //!   nix build  ──► docker-archive tarball
@@ -24,7 +28,7 @@
 //! kubectl already uses for everything else); past the apiserver,
 //! traffic is in-VPC.
 //!
-//! ## Two flavors
+//! ## Three flavors
 //!
 //! - `substrate` — pleme-io binaries (`engenho-promessa`,
 //!   `validation-api`) at a given `--tag`. nix output:
@@ -36,9 +40,16 @@
 //!   `.#dockerImage:<service>`. Target path:
 //!   `localhost:5000/akeyless-<service>:<tag>` where `<tag>` is the
 //!   tag the docker-archive baked in (or `--tag` if provided).
+//!
+//! - `submit-validations` — pure Rust; no kubectl/curl subprocess.
+//!   Talks to Zot's v2 OCI API via reqwest, applies typed
+//!   AkeylessImageValidation CRs via kube-rs Api::patch with the
+//!   Apply patch-type (idempotent). Every Akeyless image in Zot is
+//!   subjected to the validation pipeline.
 
 mod oci;
 mod orchestrator;
+mod submit;
 mod subprocess;
 
 use std::path::PathBuf;
@@ -49,7 +60,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(
     name = "private-push",
-    about = "Laptop → in-cluster Zot push (no Cloudflare Edge, with cosign keyless)"
+    about = "Laptop → in-cluster Zot push + AkeylessImageValidation submission"
 )]
 struct Cli {
     /// Override kubectl context. Default is your current context.
@@ -78,7 +89,7 @@ struct Cli {
     token_path: PathBuf,
 
     /// Skip cosign signing — useful when iterating; production push
-    /// should always sign.
+    /// should always sign. Only applies to substrate/akeyless.
     #[arg(long, env = "PRIVATE_PUSH_NO_COSIGN", global = true)]
     no_cosign: bool,
 
@@ -93,6 +104,12 @@ enum Cmd {
     /// Push Akeyless service images. Tag is auto-discovered from the
     /// nix-built docker-archive unless `--tag` is given.
     Akeyless(AkeylessArgs),
+    /// Submit AkeylessImageValidation CRs for every `akeyless-<svc>`
+    /// image found in Zot — kicks off the validation loop for each
+    /// pushed digest. Pure Rust: kube-rs Api::patch with Apply
+    /// patch-type (idempotent), reqwest for the Zot v2 OCI API
+    /// digest discovery. No kubectl/curl subprocess.
+    SubmitValidations(SubmitArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -124,7 +141,51 @@ struct AkeylessArgs {
     services: Vec<String>,
 }
 
+#[derive(Parser, Debug)]
+struct SubmitArgs {
+    /// Zot endpoint as seen from this process — typically
+    /// `localhost:5000` (after `kubectl port-forward`) or
+    /// `zot.zot-system.svc.cluster.local:5000` (in-cluster run).
+    #[arg(long, env = "PRIVATE_PUSH_ZOT_ENDPOINT", default_value = "localhost:5000")]
+    zot_endpoint: String,
+
+    /// Namespace for the AkeylessImageValidation CRs.
+    #[arg(
+        long,
+        env = "PRIVATE_PUSH_VALIDATION_NS",
+        default_value = "akeyless-validation"
+    )]
+    cr_namespace: String,
+
+    /// Promessa to reference on every emitted CR.
+    #[arg(
+        long,
+        env = "PRIVATE_PUSH_PROMESSA_REF",
+        default_value = "akeyless-nix-images-fedramp-scr"
+    )]
+    promessa_ref: String,
+
+    /// Compliance pack to reference on every emitted CR.
+    #[arg(
+        long,
+        env = "PRIVATE_PUSH_PACK",
+        default_value = "fedramp-high-akeyless-go-image@1"
+    )]
+    pack: String,
+
+    /// Print would-be CRs without applying.
+    #[arg(long)]
+    dry_run: bool,
+
+    /// Only submit for these services; empty = every `akeyless-*`
+    /// repo in Zot's catalog.
+    services: Vec<String>,
+}
+
 const SUBSTRATE_DEFAULTS: &[&str] = &["engenho-promessa", "validation-api"];
+const AKEYLESS_DEFAULTS: &[&str] = &[
+    "auth", "uam", "kfm", "gator", "bis", "logan", "mark", "sdr", "gateway",
+];
 
 /// Expand a leading `~/` against `$HOME`. Stdlib-only; we avoid a
 /// `shellexpand` dep so the build stays narrow.
@@ -137,9 +198,6 @@ fn expand_tilde(p: &PathBuf) -> PathBuf {
     }
     p.clone()
 }
-const AKEYLESS_DEFAULTS: &[&str] = &[
-    "auth", "uam", "kfm", "gator", "bis", "logan", "mark", "sdr", "gateway",
-];
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -150,6 +208,30 @@ fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+
+    // submit-validations is async (kube-rs + reqwest). Spin a tokio
+    // runtime only for that subcommand — substrate/akeyless are
+    // pure-sync and pay no tokio cost.
+    if let Cmd::SubmitValidations(args) = &cli.cmd {
+        let basic_auth = std::env::var("PRIVATE_PUSH_BASIC_AUTH")
+            .ok()
+            .and_then(|s| s.split_once(':').map(|(u, p)| (u.to_owned(), p.to_owned())));
+        let submit_args = submit::SubmitArgs {
+            zot_endpoint: args.zot_endpoint.clone(),
+            namespace: args.cr_namespace.clone(),
+            promessa_ref: args.promessa_ref.clone(),
+            pack: args.pack.clone(),
+            services: args.services.clone(),
+            basic_auth,
+            dry_run: args.dry_run,
+        };
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| anyhow::anyhow!("build tokio runtime: {e}"))?;
+        return rt.block_on(submit::run(submit_args));
+    }
+
     let common = orchestrator::Common {
         kube_context: cli.kube_context,
         namespace: cli.namespace,
@@ -186,5 +268,6 @@ fn main() -> Result<()> {
                 &services,
             )
         }
+        Cmd::SubmitValidations(_) => unreachable!("handled above before orchestrator::Common"),
     }
 }
