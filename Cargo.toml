@@ -49,7 +49,7 @@ validation-controllers = { path = "validation-controllers" }
 axum = { version = "0.7", features = ["ws"] }
 async-graphql = { version = "7" }
 async-graphql-axum = { version = "7" }
-utoipa = { version = "5", features = ["axum_extras"] }
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 tower = { version = "0.5" }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 prometheus = { version = "0.14", features = ["process"] }

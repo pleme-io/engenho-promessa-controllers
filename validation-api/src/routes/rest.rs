@@ -18,16 +18,29 @@ use crate::projection::ValidationProjection;
 
 // ── Query types ─────────────────────────────────────────────────────
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, utoipa::IntoParams, utoipa::ToSchema)]
 pub struct ListValidationsQuery {
+    /// Filter by `.status.phase` — Pending / Scanning / Passed / etc.
     pub phase: Option<String>,
+    /// Filter by `.spec.service` — auth / uam / kfm / gator / …
     pub service: Option<String>,
+    /// Filter by `.spec.promessa_ref` — pin to a single promessa.
     pub promessa: Option<String>,
+    /// RFC 3339 timestamp lower bound. Reserved (not yet enforced).
     pub since: Option<String>,
 }
 
 // ── Validations ─────────────────────────────────────────────────────
 
+#[utoipa::path(
+    get,
+    path = "/v1/validations",
+    params(ListValidationsQuery),
+    responses(
+        (status = 200, description = "AkeylessImageValidation CRs matching the query (JSON arrays of the CR shape).", body = Vec<serde_json::Value>)
+    ),
+    tag = "validations"
+)]
 pub async fn list_validations(
     State(p): State<Arc<ValidationProjection>>,
     Query(q): Query<ListValidationsQuery>,
@@ -52,6 +65,19 @@ pub async fn list_validations(
     Json(items.into_iter().cloned().collect::<Vec<_>>())
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/validations/{ns}/{name}",
+    params(
+        ("ns" = String, Path, description = "Namespace"),
+        ("name" = String, Path, description = "AkeylessImageValidation CR name")
+    ),
+    responses(
+        (status = 200, description = "The AkeylessImageValidation CR as JSON", body = serde_json::Value),
+        (status = 404, description = "Not found")
+    ),
+    tag = "validations"
+)]
 pub async fn get_validation(
     State(p): State<Arc<ValidationProjection>>,
     Path((ns, name)): Path<(String, String)>,
@@ -62,6 +88,19 @@ pub async fn get_validation(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/validations/{ns}/{name}/findings",
+    params(
+        ("ns" = String, Path, description = "Namespace"),
+        ("name" = String, Path, description = "AkeylessImageValidation CR name")
+    ),
+    responses(
+        (status = 200, description = "Typed ScanFinding rows aggregated across child ScanJob CRs", body = Vec<serde_json::Value>),
+        (status = 404, description = "Validation not found")
+    ),
+    tag = "validations"
+)]
 pub async fn get_findings(
     State(p): State<Arc<ValidationProjection>>,
     Path((ns, name)): Path<(String, String)>,
@@ -81,6 +120,19 @@ pub async fn get_findings(
     Json(findings).into_response()
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/validations/{ns}/{name}/evidence",
+    params(
+        ("ns" = String, Path),
+        ("name" = String, Path)
+    ),
+    responses(
+        (status = 200, description = "BLAKE3 evidence-bundle hash (string) or null if not aggregated yet", body = serde_json::Value),
+        (status = 404, description = "Not found")
+    ),
+    tag = "validations"
+)]
 pub async fn get_evidence(
     State(p): State<Arc<ValidationProjection>>,
     Path((ns, name)): Path<(String, String)>,
@@ -91,6 +143,19 @@ pub async fn get_evidence(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/validations/{ns}/{name}/gate",
+    params(
+        ("ns" = String, Path),
+        ("name" = String, Path)
+    ),
+    responses(
+        (status = 200, description = "The typed GateDecision from the SecurityController, or null if Gating phase has not been reached", body = serde_json::Value),
+        (status = 404, description = "Not found")
+    ),
+    tag = "validations"
+)]
 pub async fn get_gate(
     State(p): State<Arc<ValidationProjection>>,
     Path((ns, name)): Path<(String, String)>,
@@ -101,6 +166,19 @@ pub async fn get_gate(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/validations/{ns}/{name}/outcome-chain",
+    params(
+        ("ns" = String, Path),
+        ("name" = String, Path)
+    ),
+    responses(
+        (status = 200, description = "Typed OutcomeReceiptRef pointing at the tameshi-signed outcome chain entry (BLAKE3 hash, Ed25519 signature, MinIO path)", body = serde_json::Value),
+        (status = 404, description = "Not found")
+    ),
+    tag = "validations"
+)]
 pub async fn get_outcome_chain(
     State(p): State<Arc<ValidationProjection>>,
     Path((ns, name)): Path<(String, String)>,
@@ -111,6 +189,28 @@ pub async fn get_outcome_chain(
     }
 }
 
+/// Acknowledgement body returned by `POST /v1/validations/{ns}/{name}/rescan`.
+#[derive(Serialize, Debug, utoipa::ToSchema)]
+pub struct RescanAck {
+    pub acknowledged: bool,
+    pub namespace: String,
+    pub name: String,
+    pub note: String,
+    pub ts: chrono::DateTime<Utc>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/validations/{ns}/{name}/rescan",
+    params(
+        ("ns" = String, Path),
+        ("name" = String, Path)
+    ),
+    responses(
+        (status = 200, description = "Rescan request acknowledged. The controller observes the request and re-reconciles on the next tick.", body = RescanAck)
+    ),
+    tag = "validations"
+)]
 pub async fn rescan(
     State(_p): State<Arc<ValidationProjection>>,
     Path((ns, name)): Path<(String, String)>,
@@ -129,12 +229,33 @@ pub async fn rescan(
 
 // ── Tenants ─────────────────────────────────────────────────────────
 
+#[utoipa::path(
+    get,
+    path = "/v1/ephemeral-tenants",
+    responses(
+        (status = 200, description = "Every AkeylessEphemeralTenant CR the informer has observed", body = Vec<serde_json::Value>)
+    ),
+    tag = "ephemeral-tenants"
+)]
 pub async fn list_tenants(
     State(p): State<Arc<ValidationProjection>>,
 ) -> impl IntoResponse {
     Json(p.snapshot().await.tenants)
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/ephemeral-tenants/{ns}/{name}",
+    params(
+        ("ns" = String, Path),
+        ("name" = String, Path)
+    ),
+    responses(
+        (status = 200, description = "The AkeylessEphemeralTenant CR as JSON", body = serde_json::Value),
+        (status = 404, description = "Not found")
+    ),
+    tag = "ephemeral-tenants"
+)]
 pub async fn get_tenant(
     State(p): State<Arc<ValidationProjection>>,
     Path((ns, name)): Path<(String, String)>,
@@ -147,14 +268,26 @@ pub async fn get_tenant(
 
 // ── Scan Jobs ───────────────────────────────────────────────────────
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug, Default, utoipa::IntoParams, utoipa::ToSchema)]
 pub struct ListScanJobsQuery {
+    /// Filter by `.spec.scanner` — Trivy / Grype / Syft / … (PascalCase).
     pub scanner: Option<String>,
+    /// Filter by `.spec.scannerClass` — Cve / Sast / Dast / Hardening.
     #[serde(rename = "scanner-class")]
     pub scanner_class: Option<String>,
+    /// Filter by `.status.phase` — Pending / Running / Attested / etc.
     pub phase: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/scan-jobs",
+    params(ListScanJobsQuery),
+    responses(
+        (status = 200, description = "ScanJob CRs matching the query", body = Vec<serde_json::Value>)
+    ),
+    tag = "scan-jobs"
+)]
 pub async fn list_scan_jobs(
     State(p): State<Arc<ValidationProjection>>,
     Query(q): Query<ListScanJobsQuery>,
@@ -179,6 +312,19 @@ pub async fn list_scan_jobs(
     Json(items.into_iter().cloned().collect::<Vec<_>>())
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/scan-jobs/{ns}/{name}",
+    params(
+        ("ns" = String, Path),
+        ("name" = String, Path)
+    ),
+    responses(
+        (status = 200, description = "The ScanJob CR as JSON", body = serde_json::Value),
+        (status = 404, description = "Not found")
+    ),
+    tag = "scan-jobs"
+)]
 pub async fn get_scan_job(
     State(p): State<Arc<ValidationProjection>>,
     Path((ns, name)): Path<(String, String)>,
@@ -191,7 +337,7 @@ pub async fn get_scan_job(
 
 // ── Compliance summary ──────────────────────────────────────────────
 
-#[derive(Serialize, Debug, Default)]
+#[derive(Serialize, Debug, Default, utoipa::ToSchema)]
 pub struct ComplianceSummary {
     pub promessa: String,
     pub window: String,
@@ -203,6 +349,14 @@ pub struct ComplianceSummary {
     pub blocking: Vec<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/compliance-summary",
+    responses(
+        (status = 200, description = "Aggregate compliance state across every observed validation run", body = ComplianceSummary)
+    ),
+    tag = "compliance"
+)]
 pub async fn compliance_summary(
     State(p): State<Arc<ValidationProjection>>,
 ) -> impl IntoResponse {
@@ -249,6 +403,14 @@ pub async fn compliance_summary(
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/compliance-summary/by-service",
+    responses(
+        (status = 200, description = "Phase counts grouped by service name (auth / uam / kfm / ...)", body = serde_json::Value)
+    ),
+    tag = "compliance"
+)]
 pub async fn compliance_by_service(
     State(p): State<Arc<ValidationProjection>>,
 ) -> impl IntoResponse {
@@ -269,10 +431,22 @@ pub async fn compliance_by_service(
 
 // ── Health + observability ──────────────────────────────────────────
 
+#[utoipa::path(
+    get,
+    path = "/v1/healthz",
+    responses((status = 200, description = "Liveness probe — always 200 OK while the binary is alive")),
+    tag = "health"
+)]
 pub async fn healthz() -> impl IntoResponse {
     (StatusCode::OK, "ok")
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/readyz",
+    responses((status = 200, description = "Readiness probe — projection is reachable")),
+    tag = "health"
+)]
 pub async fn readyz(State(p): State<Arc<ValidationProjection>>) -> impl IntoResponse {
     // Ready = at least one informer has populated something OR we've
     // been running > 30s without errors. M1.5: always Ready.
@@ -280,6 +454,14 @@ pub async fn readyz(State(p): State<Arc<ValidationProjection>>) -> impl IntoResp
     (StatusCode::OK, "ready")
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/metrics",
+    responses(
+        (status = 200, description = "Prometheus text-format metrics scrape target", content_type = "text/plain; version=0.0.4")
+    ),
+    tag = "health"
+)]
 pub async fn metrics() -> impl IntoResponse {
     // Prometheus scrape — populated in P3 when controllers emit counters.
     (
@@ -293,8 +475,64 @@ pub async fn metrics() -> impl IntoResponse {
 
 // ── OpenAPI ────────────────────────────────────────────────────────
 
+/// OpenAPI 3 spec for the entire REST + scanner-catalog surface.
+/// Every handler annotated with `#[utoipa::path]` shows up here;
+/// every DTO derived with `#[derive(utoipa::ToSchema)]` appears in
+/// `components/schemas`. SDK generators (openapi-generator,
+/// orval, openapi-typescript, kiota, …) consume the emitted JSON.
 #[derive(utoipa::OpenApi)]
-#[openapi(paths(), components(schemas()))]
+#[openapi(
+    info(
+        title = "AKEYLESS-VALIDATION-PLATFORM REST API",
+        description = "Typed projection of AkeylessImageValidation / \
+                       AkeylessEphemeralTenant / ScanJob CRs, plus the \
+                       reusable scanner-catalog substrate. Companion to the \
+                       gRPC surface at :50051 (validation.v1).",
+        version = "0.5.0",
+        license(name = "MIT")
+    ),
+    paths(
+        // Validations
+        list_validations,
+        get_validation,
+        get_findings,
+        get_evidence,
+        get_gate,
+        get_outcome_chain,
+        rescan,
+        // Ephemeral tenants
+        list_tenants,
+        get_tenant,
+        // Scan jobs
+        list_scan_jobs,
+        get_scan_job,
+        // Compliance
+        compliance_summary,
+        compliance_by_service,
+        // Scanner catalog (D5)
+        crate::routes::scanners::list_scanners,
+        crate::routes::scanners::get_scanner,
+        // Health + observability
+        healthz,
+        readyz,
+        metrics,
+    ),
+    components(schemas(
+        ListValidationsQuery,
+        ListScanJobsQuery,
+        ComplianceSummary,
+        RescanAck,
+        crate::routes::scanners::ScannerImplDto,
+    )),
+    tags(
+        (name = "validations",        description = "AkeylessImageValidation phase machine + per-CR derived data"),
+        (name = "ephemeral-tenants",  description = "AkeylessEphemeralTenant materializer state"),
+        (name = "scan-jobs",          description = "Per-scanner ScanJob CRs + their typed findings"),
+        (name = "compliance",         description = "Aggregate compliance projection across every observed validation"),
+        (name = "scanners",           description = "scanner-catalog substrate: typed (image, args, output format) per ScannerKind"),
+        (name = "health",             description = "Liveness, readiness, metrics scrape")
+    )
+)]
 struct ApiDoc;
 
 pub fn openapi_json() -> anyhow::Result<String> {
@@ -310,5 +548,76 @@ pub async fn openapi_route() -> impl IntoResponse {
         )
             .into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pin: every documented handler must be in the emitted spec.
+    /// Failing this test means somebody added a route without a
+    /// matching `#[utoipa::path]` or forgot to include the handler
+    /// in `ApiDoc::paths(...)`.
+    #[test]
+    fn openapi_spec_covers_every_path() {
+        let raw = openapi_json().expect("ApiDoc emits valid JSON");
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let paths = v.get("paths").and_then(|p| p.as_object()).expect("paths");
+        for expected in [
+            "/v1/validations",
+            "/v1/validations/{ns}/{name}",
+            "/v1/validations/{ns}/{name}/findings",
+            "/v1/validations/{ns}/{name}/evidence",
+            "/v1/validations/{ns}/{name}/gate",
+            "/v1/validations/{ns}/{name}/outcome-chain",
+            "/v1/validations/{ns}/{name}/rescan",
+            "/v1/ephemeral-tenants",
+            "/v1/ephemeral-tenants/{ns}/{name}",
+            "/v1/scan-jobs",
+            "/v1/scan-jobs/{ns}/{name}",
+            "/v1/compliance-summary",
+            "/v1/compliance-summary/by-service",
+            "/v1/scanners",
+            "/v1/scanners/{kind}",
+            "/v1/healthz",
+            "/v1/readyz",
+            "/v1/metrics",
+        ] {
+            assert!(
+                paths.contains_key(expected),
+                "OpenAPI spec missing path {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn openapi_spec_has_typed_schemas() {
+        let raw = openapi_json().unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let schemas = v
+            .pointer("/components/schemas")
+            .and_then(|s| s.as_object())
+            .expect("components.schemas");
+        for name in [
+            "ListValidationsQuery",
+            "ListScanJobsQuery",
+            "ComplianceSummary",
+            "RescanAck",
+            "ScannerImplDto",
+        ] {
+            assert!(schemas.contains_key(name), "missing schema {name}");
+        }
+    }
+
+    #[test]
+    fn openapi_spec_has_info_metadata() {
+        let raw = openapi_json().unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            v.pointer("/info/title").and_then(|s| s.as_str()),
+            Some("AKEYLESS-VALIDATION-PLATFORM REST API"),
+        );
+        assert!(v.pointer("/info/version").and_then(|s| s.as_str()).is_some());
     }
 }

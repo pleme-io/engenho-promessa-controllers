@@ -72,7 +72,7 @@
         # $out/bin/validation-api, ready to lift into separate images.
         workspaceBinaries = pkgs.rustPlatform.buildRustPackage {
           pname = "engenho-promessa-workspace";
-          version = "0.4.0";
+          version = "0.5.0";
           src = composedSrc;
           sourceRoot = "engenho-promessa-composed-src/engenho-promessa";
           cargoLock.lockFile = ./Cargo.lock;
@@ -164,12 +164,12 @@
         engenho-promessa-image = mkImage {
           name = "zot-dev.quero.cloud/pleme-io/engenho-promessa";
           binary = "engenho-promessa";
-          tag = "0.4.0";
+          tag = "0.5.0";
         };
         validation-api-image = mkImage {
           name = "zot-dev.quero.cloud/pleme-io/validation-api";
           binary = "validation-api";
-          tag = "0.4.0";
+          tag = "0.5.0";
         };
       in {
         packages = {
