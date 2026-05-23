@@ -1,9 +1,13 @@
-//! HTTP routing tree. Composes REST + GraphQL + WebSocket + metrics
-//! under a single axum router. MCP runs as its own subcommand (stdio).
+//! HTTP routing tree. Composes REST + GraphQL + WebSocket + scanner
+//! catalog + metrics under a single axum router. MCP runs as its own
+//! subcommand (stdio). gRPC runs on a second port via
+//! `routes::grpc::build_server` (see `crate::main::serve`).
 
 pub mod graphql;
+pub mod grpc;
 pub mod mcp;
 pub mod rest;
+pub mod scanners;
 pub mod ws;
 
 use std::sync::Arc;
@@ -37,6 +41,11 @@ pub fn router(projection: Arc<ValidationProjection>) -> Router {
         .route("/v1/healthz", get(rest::healthz))
         .route("/v1/readyz", get(rest::readyz))
         .route("/v1/metrics", get(rest::metrics))
+        // ── Scanner catalog (D5) ───────────────────────────────────
+        // `scanner-catalog` substrate crate, projected to REST. Same
+        // data also served via gRPC `ScannerCatalogService`.
+        .route("/v1/scanners", get(scanners::list_scanners))
+        .route("/v1/scanners/:kind", get(scanners::get_scanner))
         // ── GraphQL ────────────────────────────────────────────────
         // GraphQL implements Service, not Handler — use route_service.
         .route_service("/graphql", GraphQL::new(gql_schema.clone()))

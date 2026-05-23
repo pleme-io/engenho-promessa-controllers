@@ -1,6 +1,6 @@
 [package]
 name = "validation-api"
-description = "akeyless-validation-api — kube-rs informer → REST + GraphQL + WebSocket + MCP + gRPC over the three AKEYLESS-VALIDATION-PLATFORM CRDs. Deterministic projection; never invents state."
+description = "akeyless-validation-api — kube-rs informer + validation-store → REST + GraphQL + WebSocket + MCP + gRPC over the three AKEYLESS-VALIDATION-PLATFORM CRDs + the scanner-catalog reusable substrate. Deterministic projection; never invents state."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,9 +11,19 @@ authors.workspace = true
 name = "validation-api"
 path = "src/main.rs"
 
+[build-dependencies]
+# Compiles `proto/*.proto` into Rust at build time. Generated code
+# lands in `OUT_DIR/validation.v1.rs` and is `include!`-ed by
+# `routes/grpc.rs`. Keeping the build script narrow: one
+# `tonic_build::compile_protos` call.
+tonic-build = { workspace = true }
+
 [dependencies]
 validation-crds = { workspace = true }
 promessa-types = { workspace = true }
+# Reusable substrate components (D2 + D5)
+validation-store = { path = "../validation-store" }
+scanner-catalog = { path = "../scanner-catalog" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
@@ -28,7 +38,7 @@ kube = { workspace = true }
 k8s-openapi = { workspace = true }
 futures = { workspace = true }
 clap = { workspace = true }
-# Transport stack
+# Transport stack — REST + GraphQL + WebSocket
 axum = { workspace = true }
 async-graphql = { workspace = true }
 async-graphql-axum = { workspace = true }
@@ -37,3 +47,11 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
+# Transport stack — gRPC (tonic on a second port alongside axum)
+tonic = { workspace = true }
+tonic-reflection = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

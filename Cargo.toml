@@ -95,6 +95,16 @@ sea-orm = { version = "1.1", features = [
 ] }
 ulid = { version = "1", features = ["serde"] }
 tempfile = { version = "3" }
+# gRPC face — `validation-api` serves a tonic server on :50051
+# alongside its axum :8080. The proto definitions live in
+# `validation-api/proto/`; `validation-api/build.rs` compiles them
+# via tonic_build at build time.
+tonic = { version = "0.12" }
+tonic-reflection = { version = "0.12" }
+prost = { version = "0.13" }
+prost-types = { version = "0.13" }
+tonic-build = { version = "0.12" }
+prost-build = { version = "0.13" }
 
 [workspace.lints]
 

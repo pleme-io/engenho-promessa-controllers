@@ -1,0 +1,187 @@
+// AKEYLESS-VALIDATION-PLATFORM gRPC surface.
+//
+// One service per logical concern:
+//   - ValidationService   — projection of AkeylessImageValidation CRs
+//   - ScannerCatalogService — typed catalog of every scanner kind
+//                             (mirrors `scanner-catalog` Rust crate)
+//   - ComplianceService   — phase counts + by-service breakdowns
+//
+// Naming pinned to `validation.v1`; future breaking changes go to
+// `validation.v2`. SDK generators (`grpc_tools_node`, `tonic-build`,
+// `protoc-gen-go`) consume this single file.
+//
+// Cross-cutting messages live at the top; service definitions below.
+
+syntax = "proto3";
+
+package validation.v1;
+
+// ── Cross-cutting ──────────────────────────────────────────────────
+
+message Empty {}
+
+message Timestamp {
+  // RFC 3339 representation. We avoid `google.protobuf.Timestamp` so
+  // the generated SDK doesn't pull in `google.protobuf` for one type.
+  string rfc3339 = 1;
+}
+
+// ── Validation projection ──────────────────────────────────────────
+
+// One row per AkeylessImageValidation CR observed by the informer.
+// Mirrors `validation-store::entities::validation_run::Model`.
+message ValidationRun {
+  string uid                      = 1;
+  string namespace                = 2;
+  string name                     = 3;
+  string image_digest             = 4;
+  string image_repo               = 5;
+  // Serialized AkeylessImageValidationPhase — one of:
+  //   Pending / Provisioning / Scanning / Aggregating / Attesting /
+  //   Gating / Passed / Failed / Quarantined
+  string phase                    = 6;
+  optional string evidence_bundle_hash = 7;
+  // Canonical JSON of the OutcomeReceiptRef.
+  optional string outcome_receipt_ref_json = 8;
+  int64 observed_generation       = 9;
+  Timestamp started_at            = 10;
+  Timestamp last_seen_at          = 11;
+  optional Timestamp terminal_at  = 12;
+}
+
+// One row per typed finding emitted by any scanner under any
+// ScanJob under a validation run. Mirrors
+// `validation-store::entities::scan_finding::Model`.
+message ScanFinding {
+  string id                       = 1;
+  string validation_run_uid       = 2;
+  string scan_job_name            = 3;
+  string scanner                  = 4;  // serialized ScannerKind
+  string severity                 = 5;  // Critical|High|Medium|Low
+  optional string cve_id          = 6;
+  optional float cvss_v3          = 7;
+  optional string package         = 8;
+  optional string fixed_in        = 9;
+  optional string exception_id    = 10;
+  optional string message         = 11;
+  Timestamp first_seen_at         = 12;
+  Timestamp recorded_at           = 13;
+}
+
+// One row per typed reconciler dispatch.
+// Mirrors `validation-store::entities::reconciler_outcome::Model`.
+message ReconcilerOutcome {
+  string id                       = 1;
+  string validation_run_uid       = 2;
+  string action_kind              = 3;  // FluxCommit / ReconcilerApply / ...
+  optional string reconciler_kind = 4;  // ReconcilerKind variant for ReconcilerApply
+  // Canonical JSON of the TypedAction.
+  string action_payload_json      = 5;
+  string outcome                  = 6;  // applied|already-converged|flag-gated|failed
+  optional string outcome_flag    = 7;
+  optional string outcome_payload_json = 8;
+  Timestamp gate_decision_decided_at = 9;
+  Timestamp dispatched_at         = 10;
+}
+
+// One row per typed gate decision the SecurityController emitted.
+// Mirrors `validation-store::entities::decision_audit::Model`.
+message DecisionAudit {
+  string id                       = 1;
+  string validation_run_uid       = 2;
+  string severity                 = 3;  // Cosmetic|Functional|Critical
+  string verdict                  = 4;  // Passed|Failed|Quarantined
+  string action_payload_json      = 5;
+  optional string reason          = 6;
+  string drift_snapshot_json      = 7;
+  Timestamp decided_at            = 8;
+  Timestamp recorded_at           = 9;
+}
+
+// ── Scanner catalog ────────────────────────────────────────────────
+// Mirrors `scanner-catalog::ScannerImpl` for every kind the
+// platform knows about.
+
+message ScannerImpl {
+  string kind                     = 1;  // ScannerKind serialized
+  string class                    = 2;  // Cve|Sast|Dast|Hardening
+  bool default_enabled            = 3;
+  string image                    = 4;
+  string target_field             = 5;  // Digest|Source|TenantUrl|None
+  repeated string args_template   = 6;
+  string output_format            = 7;
+  string upstream_url             = 8;
+}
+
+// ── Compliance summary ─────────────────────────────────────────────
+
+message PhaseCount {
+  string phase                    = 1;
+  uint64 count                    = 2;
+}
+
+message ComplianceSummary {
+  repeated PhaseCount by_phase    = 1;
+  uint64 total                    = 2;
+}
+
+// ── Services ───────────────────────────────────────────────────────
+
+service ValidationService {
+  rpc ListValidations(ListValidationsRequest) returns (ListValidationsResponse);
+  rpc GetValidation(GetValidationRequest)     returns (ValidationRun);
+  rpc ListFindings(ListFindingsRequest)       returns (ListFindingsResponse);
+  rpc ListOutcomes(ListOutcomesRequest)       returns (ListOutcomesResponse);
+  rpc ListDecisions(ListDecisionsRequest)     returns (ListDecisionsResponse);
+}
+
+message ListValidationsRequest {
+  optional string phase           = 1;  // filter — serialized phase
+  optional string namespace       = 2;
+  optional uint32 limit           = 3;
+}
+message ListValidationsResponse {
+  repeated ValidationRun items    = 1;
+}
+
+message GetValidationRequest {
+  string uid                      = 1;
+}
+
+message ListFindingsRequest {
+  string validation_run_uid       = 1;
+  optional string severity        = 2;  // filter
+}
+message ListFindingsResponse {
+  repeated ScanFinding items      = 1;
+}
+
+message ListOutcomesRequest {
+  string validation_run_uid       = 1;
+}
+message ListOutcomesResponse {
+  repeated ReconcilerOutcome items = 1;
+}
+
+message ListDecisionsRequest {
+  string validation_run_uid       = 1;
+}
+message ListDecisionsResponse {
+  repeated DecisionAudit items    = 1;
+}
+
+service ScannerCatalogService {
+  rpc ListScanners(Empty)                     returns (ListScannersResponse);
+  rpc GetScanner(GetScannerRequest)           returns (ScannerImpl);
+}
+
+message ListScannersResponse {
+  repeated ScannerImpl items      = 1;
+}
+message GetScannerRequest {
+  string kind                     = 1;  // ScannerKind serialized
+}
+
+service ComplianceService {
+  rpc GetSummary(Empty) returns (ComplianceSummary);
+}
