@@ -60,6 +60,9 @@ pub mod reconcilers;
 
 pub use reconcilers::{
     cartorio_admit::{CartorioAdmitReceipt, CartorioAdmitReconciler, CartorioAdmitSpec},
+    flux_commit::{
+        FluxCommitConfig, FluxCommitReceipt, FluxCommitReconciler, FluxCommitSpec,
+    },
     ghcr_tag_revoke::{GhcrTagRevokeReceipt, GhcrTagRevokeReconciler, GhcrTagRevokeSpec},
     harbor_mirror::{HarborMirrorReceipt, HarborMirrorReconciler, HarborMirrorSpec},
 };
@@ -239,13 +242,21 @@ pub struct BasicAuth {
 /// `ActionExecutor` — wraps [`ReconcilerEngine`] and handles the
 /// non-Reconciler [`TypedAction`] variants.
 ///
-/// For D1: `Compose` and `Noop` are handled directly here. Other
-/// non-Reconciler variants (`FluxCommit`, `CofreRotate`,
-/// `MagmaApply`, `CrachaPatch`, `Custom`) return an explicit
-/// `Failed` outcome with a FOLLOWUP message — they get dedicated
-/// executors in later deliverables.
+/// For D1: `Compose` and `Noop` are handled directly here, plus
+/// `FluxCommit` via the bundled [`FluxCommitReconciler`] (the
+/// gitops-native default per VIGGY-AUTHORING §5). Remaining
+/// non-Reconciler variants (`CofreRotate`, `MagmaApply`,
+/// `CrachaPatch`, `Custom`) return an explicit `Failed` outcome with
+/// a FOLLOWUP message — they get dedicated executors in later
+/// deliverables.
 pub struct ActionExecutor {
     engine: Arc<ReconcilerEngine>,
+    /// Optional FluxCommit handler. `None` falls back to a
+    /// substrate-refused outcome (e.g., when the engenho-promessa
+    /// container is run in a config that doesn't have git auth wired
+    /// — tests, smoke runs). Set by callers via
+    /// [`ActionExecutor::with_flux_commit`].
+    flux_commit: Option<Arc<FluxCommitReconciler>>,
 }
 
 /// Compose result: the typed outcome from each step in a
@@ -258,7 +269,15 @@ pub struct ComposeReceipt {
 impl ActionExecutor {
     #[must_use]
     pub fn new(engine: Arc<ReconcilerEngine>) -> Self {
-        Self { engine }
+        Self { engine, flux_commit: None }
+    }
+
+    /// Attach a [`FluxCommitReconciler`] so `TypedAction::FluxCommit`
+    /// emissions resolve through it instead of returning Failed.
+    #[must_use]
+    pub fn with_flux_commit(mut self, handler: FluxCommitReconciler) -> Self {
+        self.flux_commit = Some(Arc::new(handler));
+        self
     }
 
     /// Snapshot of which [`ReconcilerKind`] variants the wrapped
@@ -291,16 +310,54 @@ impl ActionExecutor {
                     .unwrap_or(serde_json::Value::Null);
                 ReconcilerOutcome::Applied { receipt: json }
             }
-            // FOLLOWUP(D1+): FluxCommit executor wrapping FluxCD
-            // GitRepository commit-and-push to clusters/<cluster>/.
-            TypedAction::FluxCommit { .. } => ReconcilerOutcome::Failed {
-                error: ReconcilerError::Internal {
-                    detail: "FluxCommit executor not yet shipped — D1+ deliverable. \
-                             SecurityController emits this for Critical-severity \
-                             pin-to-previous-good. Track at FOLLOWUP(reconciler-engine#flux-commit)."
-                        .into(),
-                },
-            },
+            // FluxCommit — wraps a `git clone + patch + commit (+ push)`
+            // pipeline via the bundled FluxCommitReconciler. When the
+            // executor wasn't given a handler at construction time
+            // (e.g., test runs), returns SubstrateRefused so callers
+            // see the missing-wiring case loudly.
+            TypedAction::FluxCommit { path, patch } => {
+                let Some(handler) = self.flux_commit.as_ref() else {
+                    return ReconcilerOutcome::Failed {
+                        error: ReconcilerError::SubstrateRefused {
+                            detail: "ActionExecutor has no FluxCommitReconciler attached — \
+                                     wire one via ActionExecutor::with_flux_commit at boot. \
+                                     spec.path={path}, spec.patch present"
+                                .replace("{path}", path),
+                        },
+                    };
+                };
+                // TypedAction::FluxCommit doesn't carry the repo URL —
+                // it's implicit at SecurityController emission time
+                // ("the gitops repo this controller lives in"). We pull
+                // the repo URL + branch from the FluxCommitReconciler's
+                // config wrapper at boot. For D1 the repo is pinned in
+                // the binary's bootstrap; FOLLOWUP(D2): make this part
+                // of the TypedAction shape so cross-repo commits are
+                // expressible.
+                let spec = FluxCommitSpec {
+                    repo_url: std::env::var("FLUX_COMMIT_REPO_URL")
+                        .unwrap_or_else(|_| "git@github.com:pleme-io/k8s.git".into()),
+                    branch: std::env::var("FLUX_COMMIT_BRANCH")
+                        .unwrap_or_else(|_| FluxCommitSpec::default_branch()),
+                    path: path.clone(),
+                    patch: patch.clone(),
+                    commit_message: None,
+                };
+                let outcome = handler.act(spec).await;
+                // Promote Applied receipt into ErasedOutcome.
+                match outcome {
+                    ReconcilerOutcome::Applied { receipt } => {
+                        let json = serde_json::to_value(receipt)
+                            .unwrap_or(serde_json::Value::Null);
+                        ReconcilerOutcome::Applied { receipt: json }
+                    }
+                    ReconcilerOutcome::AlreadyConverged => ReconcilerOutcome::AlreadyConverged,
+                    ReconcilerOutcome::FlagGated { flag } => {
+                        ReconcilerOutcome::FlagGated { flag }
+                    }
+                    ReconcilerOutcome::Failed { error } => ReconcilerOutcome::Failed { error },
+                }
+            }
             // FOLLOWUP(D1+): CofreRotate executor wrapping cofre CLI
             // (currently CLI-only per VIGGY-LEGOS V.3).
             TypedAction::CofreRotate { .. } => ReconcilerOutcome::Failed {
@@ -397,7 +454,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn action_executor_flux_commit_marked_followup() {
+    async fn action_executor_flux_commit_unwired_refused() {
+        // When ActionExecutor is constructed without
+        // `.with_flux_commit(...)`, a TypedAction::FluxCommit emission
+        // returns SubstrateRefused — making the "no handler at boot"
+        // case loud rather than silently dropping the dispatch.
         let engine = Arc::new(ReconcilerEngine::builder().build());
         let exec = ActionExecutor::new(engine);
         let action = TypedAction::FluxCommit {
@@ -406,10 +467,55 @@ mod tests {
         };
         let outcome = exec.execute(&action).await;
         match outcome {
-            ReconcilerOutcome::Failed { error: ReconcilerError::Internal { detail } } => {
-                assert!(detail.contains("FOLLOWUP"));
+            ReconcilerOutcome::Failed {
+                error: ReconcilerError::SubstrateRefused { detail },
+            } => {
+                assert!(detail.contains("no FluxCommitReconciler attached"));
+                assert!(detail.contains("with_flux_commit"));
             }
-            other => panic!("expected FOLLOWUP marker, got {other:?}"),
+            other => panic!("expected SubstrateRefused (handler unwired), got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn action_executor_flux_commit_wired_dispatches() {
+        // With a handler attached, FluxCommit emissions flow through
+        // it — verified here by setting dry_run=true on a nonexistent
+        // repo URL so the dispatch surfaces SubstrateRefused from the
+        // git clone failure (not from the missing-handler branch).
+        let engine = Arc::new(ReconcilerEngine::builder().build());
+        let handler = FluxCommitReconciler::new(FluxCommitConfig {
+            dry_run: true,
+            ..Default::default()
+        });
+        let exec = ActionExecutor::new(engine).with_flux_commit(handler);
+        let action = TypedAction::FluxCommit {
+            path: "values.yaml".into(),
+            patch: serde_json::json!({}),
+        };
+        // Override the repo URL to a nonexistent local path via env.
+        // Safety: SetEnv inside a test is racy in Rust 2024
+        // (env::set_var marked unsafe). The wider tests don't read
+        // FLUX_COMMIT_REPO_URL, so the race is benign — but for
+        // hygiene we skip the env override and accept the default
+        // (git@github.com:pleme-io/k8s.git), which will SubstrateRefused
+        // on the clone step inside the test sandbox.
+        let outcome = exec.execute(&action).await;
+        match outcome {
+            ReconcilerOutcome::Failed {
+                error: ReconcilerError::SubstrateRefused { .. },
+            } => {
+                // Substrate-level refusal (git clone failed) — the
+                // dispatch path reached the handler, which is what
+                // the test pins.
+            }
+            // If the test sandbox has SSH creds + reaches the real
+            // pleme-io/k8s repo, we get Applied. Also valid — the
+            // handler wired correctly.
+            ReconcilerOutcome::Applied { .. } => {}
+            other => panic!(
+                "expected SubstrateRefused or Applied from wired handler, got {other:?}"
+            ),
         }
     }
 

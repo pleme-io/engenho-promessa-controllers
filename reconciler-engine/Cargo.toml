@@ -20,6 +20,11 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 url = { version = "2" }
+# FluxCommit reconciler — YAML file round-trip for patch application.
+serde_yaml = { version = "0.9" }
+# FluxCommit reconciler — scoped working directories for the
+# `git clone` working tree. Auto-cleans on Drop.
+tempfile = { version = "3" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

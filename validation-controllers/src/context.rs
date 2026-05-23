@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use kube::Client;
-use reconciler_engine::{ActionExecutor, EngineConfig, ReconcilerEngine};
+use reconciler_engine::{
+    ActionExecutor, EngineConfig, FluxCommitConfig, FluxCommitReconciler, ReconcilerEngine,
+};
 use security_controller::SecurityController;
 use validation_store::ValidationStore;
 
@@ -60,7 +62,28 @@ impl ReconcileCtx {
                 .unwrap_or_else(|_| "https://registry.secondfront.com".into()),
         };
         let engine = Arc::new(ReconcilerEngine::with_defaults(engine_config));
-        let action_executor = Arc::new(ActionExecutor::new(engine));
+        // FluxCommit boot config — dry_run defaults true so untrusted
+        // pleme-dev deployments don't push to the gitops repo until
+        // the operator explicitly flips FLUX_COMMIT_DRY_RUN=false +
+        // mounts an SSH key at FLUX_COMMIT_SSH_KEY. Author identity
+        // pulled from env so different clusters can sign their own
+        // commits if needed.
+        let flux_commit_config = FluxCommitConfig {
+            author_name: std::env::var("FLUX_COMMIT_AUTHOR_NAME")
+                .unwrap_or_else(|_| "engenho-promessa".into()),
+            author_email: std::env::var("FLUX_COMMIT_AUTHOR_EMAIL")
+                .unwrap_or_else(|_| "engenho-promessa@pleme.io".into()),
+            dry_run: std::env::var("FLUX_COMMIT_DRY_RUN")
+                .map(|v| v != "false")
+                .unwrap_or(true),
+            ssh_key_path: std::env::var("FLUX_COMMIT_SSH_KEY")
+                .ok()
+                .map(std::path::PathBuf::from),
+        };
+        let action_executor = Arc::new(
+            ActionExecutor::new(engine)
+                .with_flux_commit(FluxCommitReconciler::new(flux_commit_config)),
+        );
         Self {
             client,
             namespace,

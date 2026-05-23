@@ -134,6 +134,13 @@
               tini
               bashInteractive       # for `kubectl exec ... -- /bin/sh` debugging
               coreutils
+              # FluxCommitReconciler (validation-controllers
+              # action_dispatcher → ActionExecutor → FluxCommit branch)
+              # shells out to `git` for clone/add/commit/push. SSH is
+              # bundled for the `git push` step when FLUX_COMMIT_SSH_KEY
+              # is set.
+              git
+              openssh
             ];
             config = {
               Entrypoint = [ "/bin/tini" "--" "/bin/${binary}" ];

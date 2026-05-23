@@ -5,5 +5,6 @@
 //! logic.
 
 pub mod cartorio_admit;
+pub mod flux_commit;
 pub mod ghcr_tag_revoke;
 pub mod harbor_mirror;
