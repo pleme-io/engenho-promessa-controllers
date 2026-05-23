@@ -112,7 +112,10 @@
             "-p" "scanner-catalog"
           ];
           doCheck = false;
-          nativeBuildInputs = with pkgs; [ pkg-config ];
+          # protobuf for validation-api's tonic-build (compiles
+          # proto/validation.proto); without it the rustPlatform
+          # build fails "Could not find `protoc`".
+          nativeBuildInputs = with pkgs; [ pkg-config protobuf ];
           buildInputs = with pkgs; [ openssl ];
         };
 

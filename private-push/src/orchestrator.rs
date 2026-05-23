@@ -162,47 +162,30 @@ fn decrypt_token(path: &Path) -> Result<String> {
     let mut sops = Command::new("sops");
     sops.arg("-d").arg(path);
     let yaml = subprocess::run_capture("sops -d", sops)?;
-    // Cheap extraction: find `token:` in the YAML and base64-decode
-    // its value. We avoid a serde_yaml dep — the token field shape is
-    // fixed (`data:\n  token: <base64>`).
+    // The token is a plain UTF-8 string under `data: { token: ... }`.
+    // Earlier shipping shape (commit 1407ca4) assumed base64 encoding
+    // because the file was modeled after a K8s Secret Opaque field;
+    // the actual pleme-io ZotPushToken schema (apiVersion: pleme.io/
+    // v1, kind: ZotPushToken — see zot-push-token.sops.yaml header)
+    // stores the plaintext token. Base64-only decoding produced
+    // non-UTF-8 garbage for tokens that happened to look like valid
+    // base64 input.
+    //
+    // Strategy: read the raw string after `token:`, strip quoting,
+    // and return it. No base64 step. Tokens with characters outside
+    // `[A-Za-z0-9+/=]` would previously have errored; now they pass
+    // through unchanged.
     for line in yaml.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("token:") {
-            let b64 = rest.trim().trim_matches('"');
-            let bytes = base64_decode(b64).context("decode token base64")?;
-            return String::from_utf8(bytes).context("token non-utf8");
+            let token = rest.trim().trim_matches('"').to_owned();
+            if token.is_empty() {
+                return Err(anyhow!("zot-push-token YAML has empty `token:` field"));
+            }
+            return Ok(token);
         }
     }
     Err(anyhow!("zot-push-token YAML has no `token:` field"))
-}
-
-/// Minimal base64 decoder — stdlib-only. The token field is well-
-/// behaved (no whitespace, standard alphabet, padded). Bringing in
-/// the `base64` crate just for this one call would be overkill.
-fn base64_decode(s: &str) -> Result<Vec<u8>> {
-    const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let s = s.trim();
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
-    let mut buf: u32 = 0;
-    let mut bits: u32 = 0;
-    for &b in bytes {
-        if b == b'=' {
-            break;
-        }
-        let v = A
-            .iter()
-            .position(|&c| c == b)
-            .ok_or_else(|| anyhow!("bad base64 char: {b:?}"))?;
-        buf = (buf << 6) | (v as u32);
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((buf >> bits) as u8);
-            buf &= (1 << bits) - 1;
-        }
-    }
-    Ok(out)
 }
 
 fn nix_build(source_flake: &Path, attr: &str, result_link: &Path) -> Result<()> {
@@ -280,25 +263,14 @@ fn discover_baked_tag(result_link: &Path) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn base64_decode_round_trip() {
-        // "akeyless-builder:supersecret-token" → known base64 from
-        // openssl + python. Verify the decoder handles padded input.
-        let encoded = "YWtleWxlc3MtYnVpbGRlcjpzdXBlcnNlY3JldC10b2tlbg==";
-        let out = base64_decode(encoded).unwrap();
-        assert_eq!(out, b"akeyless-builder:supersecret-token");
-    }
-
-    #[test]
-    fn base64_decode_plain() {
-        // "hello" → "aGVsbG8="
-        assert_eq!(base64_decode("aGVsbG8=").unwrap(), b"hello");
-    }
-
-    #[test]
-    fn base64_decode_rejects_bad_char() {
-        assert!(base64_decode("not_base64!").is_err());
-    }
+    // decrypt_token tests would require an executable `sops` + a
+    // SOPS-encrypted fixture file with the right age recipient. The
+    // raw token-extraction logic is now `rest.trim().trim_matches('"')`
+    // — too small to merit a unit test of its own. The end-to-end
+    // path was validated against pleme-dev's
+    // infrastructure/zot-stack/zot/zot-push-token.sops.yaml: produces
+    // "3zYSTHsY4Ra5SWYYmEwN4wXUj9YQ8WHcPNQKzdaa8LP" (plain UTF-8).
+    //
+    // The previous base64-roundtrip tests are removed alongside the
+    // decoder they exercised.
 }
