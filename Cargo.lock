@@ -4714,6 +4714,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "validation-events"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "schemars",
+ "serde",
+ "serde_json",
+ "ulid",
+ "validation-crds",
+]
+
+[[package]]
 name = "validation-store"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,23 @@
+[package]
+name = "validation-events"
+description = "Typed event schema for the AKEYLESS-VALIDATION-PLATFORM security-posture stream. One `ValidationEvent` enum covers every cross-process emission: phase transitions, scan findings, decision audits, reconciler dispatches. Published to NATS (subject prefix `validation.posture.`) by validation-controllers; consumed by alerters, dashboards, the OpenAPI/gRPC face for live-pipe queries, and any downstream pipeline that wants to stream security-posture deltas. Pure types — no NATS client dependency, no I/O. Wire-format is `serde_json::to_vec`, schema-pinned by per-variant unit tests."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+validation-crds = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+chrono = { workspace = true }
+ulid = { workspace = true }
+# Note: utoipa::ToSchema derives are deferred — validation-crds enums
+# (GateVerdict, AkeylessImageValidationPhase, ScannerKind, etc.)
+# don't yet implement ToSchema. Adding it is a substrate-wide pass
+# (FOLLOWUP: validation-crds → derive ToSchema across the typed
+# surface) so the entire schema graph round-trips into the OpenAPI
+# spec. Until then, events use serde + JsonSchema only — wire format
+# is `serde_json::to_vec`.

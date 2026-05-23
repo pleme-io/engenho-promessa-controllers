@@ -37,6 +37,15 @@ members = [
   # derivation. User directive 2026-05-22: "shell scripting you can
   # throw away for rust/tatara-lisp".
   "private-push",
+  # validation-events — typed event schema for cross-process
+  # security-posture streaming. Published to NATS on every
+  # validation-store write (action dispatch, decision audit, scan
+  # finding, phase transition). Consumers (alerting, dashboards,
+  # downstream pipelines, future kenshi cross-cluster rebroadcast)
+  # subscribe to typed topics like `validation.posture.>`. Reusable
+  # — any pleme-io crate or external SDK can depend on this without
+  # pulling validation-controllers.
+  "validation-events",
 ]
 
 [workspace.package]
