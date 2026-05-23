@@ -1,0 +1,25 @@
+[package]
+name = "validation-store"
+description = "SeaORM-backed typed persistence for the AKEYLESS-VALIDATION-PLATFORM domain. Five entities (validation_run / scan_finding / reconciler_outcome / decision_audit / digest_provenance) mirror the validation-crds CRD shapes. Single source-of-truth — REST/gRPC/GraphQL/MCP/SDK faces project from this. Dual sync/async runtime via the kiroku MetadataStore pattern (sqlite for dev, postgres for prod)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+validation-crds = { workspace = true }
+promessa-types = { workspace = true }
+sea-orm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+ulid = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile = { workspace = true }

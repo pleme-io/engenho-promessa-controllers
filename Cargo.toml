@@ -15,6 +15,13 @@ members = [
   # Reconciler impls (CartorioAdmit / GhcrTagRevoke / HarborMirror)
   # per VIGGY-LEGOS Part IV + CONVERGENCE-SUBSTRATE §III.2.
   "reconciler-engine",
+  # Validation store — SeaORM-backed typed persistence for the
+  # AkeylessImageValidation domain. Five entities mirror the CRD
+  # shapes (validation_run / scan_finding / reconciler_outcome /
+  # decision_audit / digest_provenance). Single source-of-truth that
+  # every API face (REST/gRPC/GraphQL/MCP/SDK) projects from. Adopts
+  # the kiroku MetadataStore dual sync/async runtime pattern.
+  "validation-store",
 ]
 
 [workspace.package]
@@ -65,6 +72,22 @@ k8s-openapi = { version = "0.23", features = ["v1_30"] }
 futures = { version = "0.3" }
 clap = { version = "4", features = ["derive", "env"] }
 proptest = { version = "1" }
+# SeaORM-backed persistence stack for validation-store. rustls so we
+# stay aligned with kube/reqwest TLS choice across the workspace.
+# sqlx-sqlite for dev, sqlx-postgres for prod, with-chrono +
+# with-uuid + with-json so DateTime/Uuid/Value entity fields work
+# without a conversion layer.
+sea-orm = { version = "1.1", features = [
+  "sqlx-sqlite",
+  "sqlx-postgres",
+  "runtime-tokio-rustls",
+  "macros",
+  "with-chrono",
+  "with-uuid",
+  "with-json",
+] }
+ulid = { version = "1", features = ["serde"] }
+tempfile = { version = "3" }
 
 [workspace.lints]
 
