@@ -6,6 +6,7 @@
 pub mod graphql;
 pub mod grpc;
 pub mod mcp;
+pub mod mcp_http;
 pub mod rest;
 pub mod scanners;
 pub mod ws;
@@ -52,6 +53,13 @@ pub fn router(projection: Arc<ValidationProjection>) -> Router {
         .route_service("/graphql/subscription", GraphQLSubscription::new(gql_schema))
         // ── WebSocket ──────────────────────────────────────────────
         .route("/v1/watch", get(ws::watch))
+        // ── MCP HTTP transport ─────────────────────────────────────
+        // JSON-RPC 2.0 over POST; bearer-token auth (MCP_BEARER_TOKEN
+        // env). Lets any MCP client (Claude Desktop, OpenAI tools,
+        // a custom agent) query the cluster's compliance state from
+        // anywhere over HTTPS. See routes/mcp_http.rs for the
+        // typed dispatcher.
+        .route("/v1/mcp", post(mcp_http::handler))
         // ── Static ────────────────────────────────────────────────
         .route("/v1/openapi.json", get(rest::openapi_route))
         // ── State ─────────────────────────────────────────────────
