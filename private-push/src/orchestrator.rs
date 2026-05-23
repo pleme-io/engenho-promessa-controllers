@@ -17,6 +17,14 @@ pub struct Common {
     pub port: u16,
     pub token_path: PathBuf,
     pub cosign: bool,
+    /// Optional path to a cosign private key (PEM). When set,
+    /// `cosign sign --key <path>` is used — pair with the
+    /// ClusterImagePolicy that embeds the matching public key.
+    /// When None (default), keyless signing runs and the policy-
+    /// controller side must be configured for keyless verify, which
+    /// requires Sigstore network calls. The keypair path is the
+    /// substrate-aligned default.
+    pub cosign_key_path: Option<PathBuf>,
 }
 
 impl Common {
@@ -50,7 +58,12 @@ pub fn run_substrate(
         skopeo_copy(&result_link, &dest)?;
 
         if common.cosign {
-            cosign_sign(common.port, &format!("pleme-io/{binary}"), &dest)?;
+            cosign_sign(
+                common.port,
+                &format!("pleme-io/{binary}"),
+                &dest,
+                common.cosign_key_path.as_deref(),
+            )?;
         }
 
         std::fs::remove_file(&result_link).ok();
@@ -84,7 +97,12 @@ pub fn run_akeyless(
         skopeo_copy(&result_link, &dest)?;
 
         if common.cosign {
-            cosign_sign(common.port, &format!("akeyless-{service}"), &dest)?;
+            cosign_sign(
+                common.port,
+                &format!("akeyless-{service}"),
+                &dest,
+                common.cosign_key_path.as_deref(),
+            )?;
         }
 
         std::fs::remove_file(&result_link).ok();
@@ -206,7 +224,12 @@ fn skopeo_copy(result_link: &Path, dest: &str) -> Result<()> {
     subprocess::run_checked("skopeo copy", cmd)
 }
 
-fn cosign_sign(port: u16, repo: &str, dest_tagged: &str) -> Result<()> {
+fn cosign_sign(
+    port: u16,
+    repo: &str,
+    dest_tagged: &str,
+    key_path: Option<&Path>,
+) -> Result<()> {
     // Resolve to digest first — cosign signs by digest, not tag.
     let digest = {
         let mut cmd = Command::new("skopeo");
@@ -225,8 +248,17 @@ fn cosign_sign(port: u16, repo: &str, dest_tagged: &str) -> Result<()> {
     cmd.arg("sign")
         .arg("--yes")
         .arg("--allow-insecure-registry")
-        .arg("--tlog-upload=false")
-        .arg(&ref_by_digest);
+        .arg("--tlog-upload=false");
+    if let Some(key) = key_path {
+        // Static-keypair sign — matches the ClusterImagePolicy
+        // `authorities[].key.data` PEM embedded in the chart.
+        // No Sigstore network calls on verify (Fulcio / Rekor /
+        // CT-log) because the verifier just runs a signature check
+        // against the embedded pubkey.
+        cmd.arg("--key").arg(key);
+    }
+    // else: keyless — falls back to Fulcio OIDC interactive flow.
+    cmd.arg(&ref_by_digest);
     subprocess::run_checked("cosign sign", cmd)
 }
 

@@ -93,6 +93,20 @@ struct Cli {
     #[arg(long, env = "PRIVATE_PUSH_NO_COSIGN", global = true)]
     no_cosign: bool,
 
+    /// Path to a cosign private key (PEM) used to sign each pushed
+    /// image. When set, every `cosign sign` call uses `--key <path>`
+    /// against this key; the matching public key must be embedded in
+    /// the lareira-akeyless-validation chart's
+    /// `cosign.publicKey` value so policy-controller's verify path
+    /// accepts the signature.
+    ///
+    /// When unset, cosign falls back to keyless OIDC signing (Fulcio
+    /// interactive flow). Keyless works for ad-hoc pushes but
+    /// requires Sigstore network calls on verify — set this for the
+    /// canonical offline-verifiable signing path.
+    #[arg(long, env = "PRIVATE_PUSH_COSIGN_KEY", global = true)]
+    cosign_key: Option<PathBuf>,
+
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -239,6 +253,7 @@ fn main() -> Result<()> {
         port: cli.port,
         token_path: expand_tilde(&cli.token_path),
         cosign: !cli.no_cosign,
+        cosign_key_path: cli.cosign_key.map(|p| expand_tilde(&p)),
     };
 
     match cli.cmd {
