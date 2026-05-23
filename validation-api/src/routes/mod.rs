@@ -7,6 +7,7 @@ pub mod graphql;
 pub mod grpc;
 pub mod mcp;
 pub mod mcp_http;
+pub mod mcp_proxy;
 pub mod rest;
 pub mod scanners;
 pub mod ws;

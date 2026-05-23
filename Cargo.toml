@@ -122,6 +122,12 @@ prost = { version = "0.13" }
 prost-types = { version = "0.13" }
 tonic-build = { version = "0.12" }
 prost-build = { version = "0.13" }
+# NATS client — typed pub/sub on `validation.posture.>` for the
+# security-posture stream. validation-controllers publishes;
+# downstream consumers (alerters, dashboards, future kenshi
+# cross-cluster rebroadcast) subscribe.
+async-nats = { version = "0.42" }
+validation-events = { path = "validation-events" }
 
 [workspace.lints]
 

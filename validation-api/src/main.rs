@@ -47,6 +47,28 @@ enum Cmd {
     OpenApi,
     /// Print the GraphQL SDL to stdout.
     GraphqlSdl,
+    /// Stdio→HTTP MCP bridge for Claude Code et al. — POSTs each
+    /// JSON-RPC line on stdin to a remote `/v1/mcp` endpoint and
+    /// emits the response on stdout. Wire into blackmatter-anvil as
+    /// `anvil.mcp.servers.akeyless-validation`.
+    McpProxy(McpProxyArgs),
+}
+
+#[derive(Parser, Debug)]
+struct McpProxyArgs {
+    /// Remote MCP endpoint URL.
+    #[arg(long, env = "MCP_PROXY_ENDPOINT")]
+    endpoint: String,
+
+    /// File containing the bearer token (one line). Preferred over
+    /// $MCP_BEARER_TOKEN since the file path is in argv but the
+    /// token isn't.
+    #[arg(long)]
+    bearer_file: Option<std::path::PathBuf>,
+
+    /// HTTP timeout per request, seconds.
+    #[arg(long, default_value = "30")]
+    timeout_secs: u64,
 }
 
 #[derive(Parser, Debug)]
@@ -107,6 +129,18 @@ async fn main() -> anyhow::Result<()> {
         Cmd::GraphqlSdl => {
             println!("{}", routes::graphql::sdl());
             Ok(())
+        }
+        Cmd::McpProxy(args) => {
+            let bearer = routes::mcp_proxy::load_bearer(args.bearer_file.as_deref())?;
+            let cfg = routes::mcp_proxy::ProxyConfig {
+                endpoint: args.endpoint,
+                bearer,
+                timeout_secs: args.timeout_secs,
+            };
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?;
+            rt.block_on(routes::mcp_proxy::run(cfg))
         }
     }
 }

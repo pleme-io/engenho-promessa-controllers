@@ -52,6 +52,10 @@ tonic = { workspace = true }
 tonic-reflection = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
+# Client-side HTTP for the `mcp-proxy` subcommand — bridges stdio
+# JSON-RPC (from Claude Code et al.) to the validation-api's
+# `POST /v1/mcp` endpoint over HTTPS.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
