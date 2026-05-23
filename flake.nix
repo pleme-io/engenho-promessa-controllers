@@ -72,18 +72,27 @@
         # $out/bin/validation-api, ready to lift into separate images.
         workspaceBinaries = pkgs.rustPlatform.buildRustPackage {
           pname = "engenho-promessa-workspace";
-          version = "0.9.0";
+          version = "0.10.0";
           src = composedSrc;
           sourceRoot = "engenho-promessa-composed-src/engenho-promessa";
           cargoLock.lockFile = ./Cargo.lock;
-          # Version 0.3.0 — adds scanner-catalog (reusable substrate
-          # crate with typed ScannerImpl per ScannerKind + per-format
-          # output parsers). validation-controllers/scan_job.rs now
-          # consumes the catalog instead of inline match-arms. New
-          # OSS scanner variants: Grype, Syft, Trufflehog, KubeLinter,
-          # KubeBench, KubeHunter, Polaris (alongside existing Trivy,
-          # Semgrep, Zap, StigCisValidator).
+          # Version 0.10.0 — D-events-complete: FindingRecorded emission
+          # in validation-controllers/scan_job.rs at the Running→Attested
+          # transition; one event per ScanFinding, looked up against the
+          # parent AkeylessImageValidation for image identity. With this,
+          # all 4 ValidationEvent variants (PhaseChanged, FindingRecorded,
+          # DecisionEmitted, ReconcilerDispatched) have wired emission
+          # points. Disconnected publisher = typed no-op so unwired
+          # clusters stay quiet.
           #
+          # 0.9.0: validation-events crate + events_publisher (async-nats);
+          # PhaseChanged + DecisionEmitted emit in image_validation.rs.
+          # 0.3.0: scanner-catalog (reusable substrate crate with typed
+          # ScannerImpl per ScannerKind + per-format output parsers).
+          # validation-controllers/scan_job.rs consumes the catalog
+          # instead of inline match-arms. New OSS scanner variants:
+          # Grype, Syft, Trufflehog, KubeLinter, KubeBench, KubeHunter,
+          # Polaris (alongside Trivy, Semgrep, Zap, StigCisValidator).
           # 0.2.0: D1 reconciler-engine + action_dispatcher, D2
           # validation-store, D6 outcome persistence wiring.
           # 0.2.1: image refs off ghcr.io onto cluster-internal Zot;
@@ -164,12 +173,12 @@
         engenho-promessa-image = mkImage {
           name = "zot-dev.quero.cloud/pleme-io/engenho-promessa";
           binary = "engenho-promessa";
-          tag = "0.9.0";
+          tag = "0.10.0";
         };
         validation-api-image = mkImage {
           name = "zot-dev.quero.cloud/pleme-io/validation-api";
           binary = "validation-api";
-          tag = "0.9.0";
+          tag = "0.10.0";
         };
       in {
         packages = {
@@ -186,6 +195,11 @@
           packages = with pkgs; [
             rustc cargo rustfmt clippy rust-analyzer
             pkg-config openssl git jq yq-go
+            # validation-api/build.rs invokes tonic-build, which shells
+            # out to protoc to compile proto/validation.proto. Without
+            # this, `cargo check -p validation-api` fails with
+            # "Could not find `protoc`".
+            protobuf
             # Private-publish toolchain (scripts/private-push.sh):
             #   skopeo   — OCI copy with --dest-tls-verify=false to
             #              localhost:5000 (kubectl port-forward)

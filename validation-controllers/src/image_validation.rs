@@ -95,10 +95,76 @@ async fn reconcile(
         let patch = json!({ "status": new_status });
         api.patch_status(&name, &PatchParams::apply("validation-controllers"), &Patch::Merge(&patch))
             .await?;
+        // ── Emit typed events for cross-process consumers ──────────
+        // Single intercept point — every phase transition + every
+        // newly-emitted GateDecision fans out to NATS here. The
+        // events_publisher is Disconnected when NATS_URL is unset,
+        // so this is a typed no-op outside cluster.
+        emit_post_patch(&obj, &ctx, current, &new_status).await;
     }
 
     // Short requeue so phase transitions cascade promptly.
     Ok(Action::requeue(Duration::from_secs(15)))
+}
+
+/// Compare the previous CR state against the just-patched status
+/// and publish typed events for every observable change.
+async fn emit_post_patch(
+    obj: &AkeylessImageValidation,
+    ctx: &ReconcileCtx,
+    previous_phase: AkeylessImageValidationPhase,
+    new_status: &AkeylessImageValidationStatus,
+) {
+    use validation_events::{
+        DecisionEmitted, PhaseChanged, ValidationEvent,
+    };
+
+    let service = obj.spec.service.clone();
+    let image_digest = obj.spec.image_digest.clone();
+    let image_repo = obj.spec.image_repo.clone();
+    let uid = obj.metadata.uid.clone().unwrap_or_default();
+    let now = Utc::now();
+
+    // PhaseChanged — fires only when the phase actually moved.
+    if let Some(new_phase) = new_status.phase {
+        if new_phase != previous_phase {
+            let event = ValidationEvent::PhaseChanged(PhaseChanged {
+                event_id: validation_events::new_event_id(),
+                validation_run_uid: uid.clone(),
+                service: service.clone(),
+                image_digest: image_digest.clone(),
+                image_repo: image_repo.clone(),
+                observed_at: now,
+                from: Some(previous_phase),
+                to: new_phase,
+            });
+            ctx.events_publisher.publish(&event).await;
+        }
+    }
+
+    // DecisionEmitted — fires when the gate just landed (previous
+    // status had no decision; the new one does).
+    let previously_had_decision = obj
+        .status
+        .as_ref()
+        .and_then(|s| s.gate_decision.as_ref())
+        .is_some();
+    if !previously_had_decision {
+        if let Some(gd) = new_status.gate_decision.as_ref() {
+            let event = ValidationEvent::DecisionEmitted(DecisionEmitted {
+                event_id: validation_events::new_event_id(),
+                validation_run_uid: uid,
+                service,
+                image_digest,
+                image_repo,
+                observed_at: now,
+                severity: gd.severity.clone(),
+                verdict: gd.verdict,
+                reason: gd.reason.clone(),
+            });
+            ctx.events_publisher.publish(&event).await;
+        }
+    }
 }
 
 fn error_policy(

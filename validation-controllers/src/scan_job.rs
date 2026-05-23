@@ -19,7 +19,7 @@ use kube::{Api, ResourceExt};
 use serde_json::json;
 use tracing::{info, warn};
 use validation_crds::{
-    AttestationRef, ScanFinding, ScanJob, ScanJobPhase, ScannerKind,
+    AkeylessImageValidation, AttestationRef, ScanFinding, ScanJob, ScanJobPhase, ScannerKind,
 };
 
 use crate::context::ReconcileCtx;
@@ -77,10 +77,15 @@ async fn reconcile(obj: Arc<ScanJob>, ctx: Arc<ReconcileCtx>) -> Result<Action, 
                     &api,
                     &name,
                     ScanJobPhase::Attested,
-                    Some(findings),
+                    Some(findings.clone()),
                     Some(attestation),
                 )
                 .await?;
+                // One FindingRecorded event per finding — emit once at
+                // the Running→Attested transition. Idempotent because
+                // subsequent reconciles see `current == Attested` and
+                // skip this arm entirely.
+                emit_findings_recorded(&ctx, &obj, &findings).await;
             }
         }
         ScanJobPhase::Attested
@@ -358,5 +363,63 @@ fn parse_scanner_output(raw: &str, scanner: ScannerKind) -> Vec<ScanFinding> {
             tracing::error!(?scanner, %err, "scanner-catalog parser error");
             vec![]
         }
+    }
+}
+
+/// Emit one `FindingRecorded` event per finding to the security-posture
+/// NATS stream. Looks up the parent `AkeylessImageValidation` once for
+/// image identity (digest/repo/service/uid) — if the lookup fails (CR
+/// already deleted / wrong namespace), the findings still land in the
+/// ScanJob CR status; only the event tap goes dark.
+///
+/// The publisher is `Disconnected` when NATS_URL is unset → every
+/// `publish` is a typed no-op. So this code path is cheap to keep in
+/// the hot loop even when no broker is wired.
+async fn emit_findings_recorded(
+    ctx: &ReconcileCtx,
+    sj: &ScanJob,
+    findings: &[ScanFinding],
+) {
+    if findings.is_empty() {
+        return;
+    }
+    use validation_events::{FindingRecorded, ValidationEvent};
+
+    let ns = sj.namespace().unwrap_or_default();
+    let parent_api: Api<AkeylessImageValidation> =
+        Api::namespaced(ctx.client.clone(), &ns);
+    let Ok(Some(parent)) = parent_api.get_opt(&sj.spec.parent_validation).await else {
+        tracing::debug!(
+            scan_job = %sj.name_any(),
+            parent = %sj.spec.parent_validation,
+            "FindingRecorded: parent AkeylessImageValidation not found — partial emit skipped"
+        );
+        return;
+    };
+
+    let uid = parent.metadata.uid.clone().unwrap_or_default();
+    let service = parent.spec.service.clone();
+    let image_digest = parent.spec.image_digest.clone();
+    let image_repo = parent.spec.image_repo.clone();
+    let scanner_class = scanner_catalog::Catalog::for_kind(sj.spec.scanner).class;
+
+    for f in findings {
+        let event = ValidationEvent::FindingRecorded(FindingRecorded {
+            event_id: validation_events::new_event_id(),
+            validation_run_uid: uid.clone(),
+            service: service.clone(),
+            image_digest: image_digest.clone(),
+            image_repo: image_repo.clone(),
+            observed_at: Utc::now(),
+            scanner: f.scanner,
+            scanner_class,
+            severity: f.severity,
+            cve_id: f.cve_id.clone(),
+            // ScanFinding has no package field today; subscribers see
+            // None and can fall back to the `message` channel on the
+            // store row when they need the package coordinate.
+            package: None,
+        });
+        ctx.events_publisher.publish(&event).await;
     }
 }
