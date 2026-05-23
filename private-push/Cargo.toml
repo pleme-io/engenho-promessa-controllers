@@ -1,0 +1,19 @@
+[package]
+name = "private-push"
+description = "Typed Rust CLI for the laptop → in-cluster Zot push path. Replaces the deprecated shell scripts in `pleme-io/engenho-promessa-controllers/scripts/private-push.sh` and `akeylesslabs/akeyless-nix-images/scripts/private-push.sh`. Same flow (kubectl port-forward → in-cluster Zot Service → skopeo copy → cosign keyless), but typed CLI, structured errors, unit-testable URL/tag derivation. Two subcommands: `substrate` (pleme-io binaries by tag) and `akeyless` (Akeyless service images by service name). FOLLOWUP (D-OP-9): extract the port-forward+skopeo+cosign orchestration into `substrate/lib/private-push` so other workspaces (kenshi, ami-forge, etc.) consume the same canonical implementation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "private-push"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true, features = ["derive", "env"] }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

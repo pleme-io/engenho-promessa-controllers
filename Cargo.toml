@@ -29,6 +29,14 @@ members = [
   # SDK generators all import the same catalog so scanner provisioning
   # stays fleet-coherent (Compounding #1: solve once).
   "scanner-catalog",
+  # private-push — typed Rust CLI replacing the deprecated
+  # `scripts/private-push.sh` shell scripts in this repo and
+  # `akeylesslabs/akeyless-nix-images/`. Same shape (kubectl
+  # port-forward → in-cluster Zot → skopeo + cosign keyless) but
+  # typed CLI args, structured errors, and unit-testable URL/tag
+  # derivation. User directive 2026-05-22: "shell scripting you can
+  # throw away for rust/tatara-lisp".
+  "private-push",
 ]
 
 [workspace.package]
