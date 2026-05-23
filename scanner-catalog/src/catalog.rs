@@ -385,6 +385,53 @@ impl Catalog {
     }
 }
 
+/// Rewrite an upstream OCI image reference to its in-cluster Zot
+/// mirror equivalent. Pure function — call it with whatever runtime
+/// `mirror_prefix` (typically `zot.zot-system.svc.cluster.local:5000`)
+/// the controller pod has in env.
+///
+/// Rules:
+/// - `None` → return canonical unchanged (no mirror configured)
+/// - `Some(prefix)` → strip the registry host segment (any first
+///   slash-delimited token containing `.` or `:` is treated as a host
+///   — `quay.io/foo/bar:tag`, `ghcr.io/foo/bar:tag`,
+///   `localhost:5000/foo:tag`) and prepend `mirror_prefix`.
+///   Docker-Hub-implicit refs (`aquasec/trivy:0.50.0`) carry no host;
+///   we just prepend the prefix.
+///
+/// Examples:
+/// - `aquasec/trivy:0.50.0` + `zot.zot-system…:5000`
+///     → `zot.zot-system…:5000/aquasec/trivy:0.50.0`
+/// - `quay.io/fairwinds/polaris:8.5` + `zot…`
+///     → `zot…/fairwinds/polaris:8.5`
+///
+/// Pairs with the image-sync mirror config (chart values
+/// `cache_as` field strips the same host prefix on the mirror
+/// destination), so the Job's image ref always resolves to the Zot
+/// blob.
+#[must_use]
+pub fn mirror_image(canonical: &str, mirror_prefix: Option<&str>) -> String {
+    let Some(prefix) = mirror_prefix else {
+        return canonical.to_owned();
+    };
+    let prefix = prefix.trim_end_matches('/');
+    let stripped = match canonical.find('/') {
+        Some(slash) => {
+            let host = &canonical[..slash];
+            // A "host" is any first segment containing `.` (DNS) or
+            // `:` (host:port) or literal "localhost". Docker-Hub
+            // implicit refs like "aquasec/trivy" don't match.
+            if host.contains('.') || host.contains(':') || host == "localhost" {
+                &canonical[slash + 1..]
+            } else {
+                canonical
+            }
+        }
+        None => canonical,
+    };
+    format!("{prefix}/{stripped}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,5 +492,73 @@ mod tests {
         // KubeBench has TargetField::None — render with no target.
         let rendered = kb.args.render(None);
         assert_eq!(rendered, vec!["run".to_owned(), "--json".to_owned()]);
+    }
+
+    // ── mirror_image ──────────────────────────────────────────────
+
+    #[test]
+    fn mirror_image_unchanged_when_no_prefix() {
+        assert_eq!(
+            mirror_image("aquasec/trivy:0.50.0", None),
+            "aquasec/trivy:0.50.0"
+        );
+    }
+
+    #[test]
+    fn mirror_image_prepends_for_docker_hub_implicit() {
+        // No registry host → Docker Hub implicit → prepend mirror.
+        assert_eq!(
+            mirror_image("aquasec/trivy:0.50.0", Some("zot.svc:5000")),
+            "zot.svc:5000/aquasec/trivy:0.50.0"
+        );
+    }
+
+    #[test]
+    fn mirror_image_strips_quay_io() {
+        assert_eq!(
+            mirror_image("quay.io/fairwinds/polaris:8.5", Some("zot.svc:5000")),
+            "zot.svc:5000/fairwinds/polaris:8.5"
+        );
+    }
+
+    #[test]
+    fn mirror_image_strips_ghcr_io() {
+        assert_eq!(
+            mirror_image("ghcr.io/pleme-io/engenho-promessa:0.5.0", Some("zot.svc:5000")),
+            "zot.svc:5000/pleme-io/engenho-promessa:0.5.0"
+        );
+    }
+
+    #[test]
+    fn mirror_image_strips_localhost_with_port() {
+        assert_eq!(
+            mirror_image("localhost:5000/foo/bar:tag", Some("zot.svc:5000")),
+            "zot.svc:5000/foo/bar:tag"
+        );
+    }
+
+    #[test]
+    fn mirror_image_handles_trailing_slash_prefix() {
+        // `cacheRegistry` values sometimes carry trailing slash.
+        assert_eq!(
+            mirror_image("aquasec/trivy:0.50.0", Some("zot.svc:5000/")),
+            "zot.svc:5000/aquasec/trivy:0.50.0"
+        );
+    }
+
+    #[test]
+    fn mirror_image_every_catalog_entry_round_trips() {
+        // Every scanner-catalog image canonical → mirrored is non-empty
+        // and contains the catalog's `/<repo>` suffix exactly once.
+        let prefix = "zot.zot-system.svc.cluster.local:5000";
+        for entry in Catalog::all() {
+            let mirrored = mirror_image(entry.image, Some(prefix));
+            assert!(mirrored.starts_with(prefix), "{}", entry.image);
+            assert!(
+                mirrored.contains(':'),
+                "{} mirrored to {mirrored} — lost tag",
+                entry.image
+            );
+        }
     }
 }

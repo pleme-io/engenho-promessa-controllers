@@ -35,7 +35,9 @@
 pub mod catalog;
 pub mod parsers;
 
-pub use catalog::{ArgsTemplate, Catalog, OutputFormat, ScannerImpl, TargetField};
+pub use catalog::{
+    mirror_image, ArgsTemplate, Catalog, OutputFormat, ScannerImpl, TargetField,
+};
 pub use parsers::{parse_scanner_output, ParserError};
 
 // Re-export the CRD enums so consumers don't need a separate

@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # private-push.sh — laptop → in-cluster Zot, bypassing Cloudflare Edge.
 #
+# ────────────────────────────────────────────────────────────────────
+# DEPRECATED: shell. Replaced by a typed Rust binary next session
+# (FOLLOWUP D-OP-9 / NEXT). User directive 2026-05-22: "shell
+# scripting you can throw away for rust/tatara-lisp". This script
+# stays operational until the Rust `private-push` workspace member
+# lands.
+# ────────────────────────────────────────────────────────────────────
+#
 # Standing rule (memory feedback_akeyless_image_privacy.md):
 # Akeyless-source-processing binaries (engenho-promessa,
 # validation-api) NEVER touch a third-party registry. The push

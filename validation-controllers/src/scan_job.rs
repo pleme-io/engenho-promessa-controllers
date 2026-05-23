@@ -235,10 +235,14 @@ fn render_job(job_name: &str, sj: &ScanJob) -> Job {
 }
 
 /// Resolve (image, args) for a ScanJob from the canonical
-/// `scanner-catalog` (reusable substrate). Replaces the prior
-/// match-arm wall — every catalog change immediately propagates here.
+/// `scanner-catalog` (reusable substrate). The image string is
+/// optionally rewritten via `scanner_catalog::mirror_image` when the
+/// `SCANNER_REGISTRY_MIRROR` env var is set — pleme-dev sets this to
+/// `zot.zot-system.svc.cluster.local:5000` so scanner Jobs pull
+/// from the in-cluster private Zot instead of public Docker Hub /
+/// ghcr.io / quay.io.
 fn scanner_image_and_args(sj: &ScanJob) -> (String, Vec<String>) {
-    use scanner_catalog::{Catalog, TargetField};
+    use scanner_catalog::{mirror_image, Catalog, TargetField};
     let entry = Catalog::for_kind(sj.spec.scanner);
     let target = match entry.target_field {
         TargetField::Digest => sj.spec.target_digest.as_deref(),
@@ -247,7 +251,9 @@ fn scanner_image_and_args(sj: &ScanJob) -> (String, Vec<String>) {
         TargetField::None => None,
     };
     let args = entry.args.render(target);
-    (entry.image.to_owned(), args)
+    let mirror = std::env::var("SCANNER_REGISTRY_MIRROR").ok();
+    let image = mirror_image(entry.image, mirror.as_deref());
+    (image, args)
 }
 
 fn owner_refs_of(
