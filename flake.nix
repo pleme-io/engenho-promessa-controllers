@@ -139,13 +139,23 @@
             '';
           };
 
+        # Image labels carry the public-looking long name; the actual
+        # push happens privately to the cluster-singleton Zot via
+        # kubectl port-forward (see scripts/private-push.sh). The
+        # name is documentation in the OCI label only — skopeo's
+        # `--dest` controls where bytes actually land.
+        #
+        # Standing rule (memory feedback_akeyless_image_privacy.md):
+        # these binaries process Akeyless source. They are NEVER on
+        # ghcr.io or any third-party registry. Zot + cosign keyless
+        # signing is the only path.
         engenho-promessa-image = mkImage {
-          name = "ghcr.io/pleme-io/engenho-promessa";
+          name = "zot-dev.quero.cloud/pleme-io/engenho-promessa";
           binary = "engenho-promessa";
           tag = "0.2.0";
         };
         validation-api-image = mkImage {
-          name = "ghcr.io/pleme-io/validation-api";
+          name = "zot-dev.quero.cloud/pleme-io/validation-api";
           binary = "validation-api";
           tag = "0.2.0";
         };
@@ -164,7 +174,13 @@
           packages = with pkgs; [
             rustc cargo rustfmt clippy rust-analyzer
             pkg-config openssl git jq yq-go
-            skopeo
+            # Private-publish toolchain (scripts/private-push.sh):
+            #   skopeo   — OCI copy with --dest-tls-verify=false to
+            #              localhost:5000 (kubectl port-forward)
+            #   kubectl  — port-forward the in-cluster Zot Service
+            #   cosign   — keyless signing for cryptographic provenance
+            #   sops     — decrypt the akeyless-builder push token
+            skopeo kubectl cosign sops
           ];
         };
       }) // {
