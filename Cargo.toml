@@ -72,12 +72,12 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 prometheus = { version = "0.14", features = ["process"] }
 url = { version = "2" }
 uuid = { version = "1", features = ["v4", "serde"] }
-promessa-types = { path = "../promessa/promessa-types" }
-promessa-runtime = { path = "../promessa/promessa-runtime" }
-promessa-store = { path = "../promessa/promessa-store" }
-shigoto-dag = { path = "../shigoto/shigoto-dag" }
-shikumi = { path = "../shikumi" }
-cofre-types = { path = "../cofre/crates/cofre-types" }
+promessa-types = { git = "https://github.com/pleme-io/promessa", branch = "main" }
+promessa-runtime = { git = "https://github.com/pleme-io/promessa", branch = "main" }
+promessa-store = { git = "https://github.com/pleme-io/promessa", branch = "main" }
+shigoto-dag = { git = "https://github.com/pleme-io/shigoto", branch = "main" }
+shikumi = { git = "https://github.com/pleme-io/shikumi", branch = "main" }
+cofre-types = { git = "https://github.com/pleme-io/cofre", branch = "main" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 serde_yaml = { version = "0.9" }
