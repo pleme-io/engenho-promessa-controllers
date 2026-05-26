@@ -16,7 +16,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     promessa = {
-      url = "git+ssh://git@github.com/pleme-io/promessa";
+      url = "github:pleme-io/promessa";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.crate2nix.follows = "crate2nix";
       inputs.shigoto.follows = "shigoto";
@@ -24,17 +24,17 @@
       inputs.cofre.follows = "cofre";
     };
     shigoto = {
-      url = "git+ssh://git@github.com/pleme-io/shigoto";
+      url = "github:pleme-io/shigoto";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.crate2nix.follows = "crate2nix";
     };
     shikumi = {
-      url = "git+ssh://git@github.com/pleme-io/shikumi";
+      url = "github:pleme-io/shikumi";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.crate2nix.follows = "crate2nix";
     };
     cofre = {
-      url = "git+ssh://git@github.com/pleme-io/cofre";
+      url = "github:pleme-io/cofre";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.crate2nix.follows = "crate2nix";
     };
