@@ -1128,7 +1128,7 @@ dependencies = [
 
 [[package]]
 name = "engenho-promessa"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2737,7 +2737,7 @@ dependencies = [
 
 [[package]]
 name = "private-push"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2809,7 +2809,7 @@ dependencies = [
 
 [[package]]
 name = "promessa-controller-common"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "promessa-types",
  "proptest",
@@ -3082,7 +3082,7 @@ dependencies = [
 
 [[package]]
 name = "reconciler-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3409,7 +3409,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "scanner-catalog"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "serde",
@@ -3566,7 +3566,7 @@ dependencies = [
 
 [[package]]
 name = "security-controller"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "promessa-controller-common",
@@ -4833,7 +4833,7 @@ dependencies = [
 
 [[package]]
 name = "validation-api"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -4871,7 +4871,7 @@ dependencies = [
 
 [[package]]
 name = "validation-controllers"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-nats",
@@ -4899,7 +4899,7 @@ dependencies = [
 
 [[package]]
 name = "validation-crds"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4915,7 +4915,7 @@ dependencies = [
 
 [[package]]
 name = "validation-events"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "schemars",
@@ -4927,7 +4927,7 @@ dependencies = [
 
 [[package]]
 name = "validation-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "promessa-types",
