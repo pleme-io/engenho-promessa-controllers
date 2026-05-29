@@ -107,6 +107,17 @@ struct Cli {
     #[arg(long, env = "PRIVATE_PUSH_COSIGN_KEY", global = true)]
     cosign_key: Option<PathBuf>,
 
+    /// Push directly to this registry host instead of port-forwarding
+    /// to the in-cluster Service — the VPN-free path, e.g.
+    /// `zot-dev.quero.cloud` (the public Cloudflare-tunnel endpoint).
+    ///
+    /// When set: no `kubectl port-forward` (no cluster-API access
+    /// needed), and TLS is **verified** against the host's real cert.
+    /// When unset: port-forward to `localhost:<port>` with TLS
+    /// disabled (Cloudflare-blind, needs cluster reachability).
+    #[arg(long, env = "PRIVATE_PUSH_REGISTRY", global = true)]
+    registry: Option<String>,
+
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -146,7 +157,14 @@ struct AkeylessArgs {
     #[arg(long)]
     tag: Option<String>,
 
-    /// nix-flake directory containing `dockerImage:<service>` outputs.
+    /// Image architecture: `amd64` (x86_64-linux — pleme-dev's nodes)
+    /// or `arm64` (aarch64-linux). Selects the
+    /// `packages.<system>."dockerImage:<arch>:<service>"` flake attr.
+    #[arg(long, default_value = "amd64")]
+    arch: String,
+
+    /// nix-flake directory containing the
+    /// `packages.<system>."dockerImage:<arch>:<service>"` outputs.
     #[arg(long, default_value = ".")]
     source_flake: PathBuf,
 
@@ -254,6 +272,7 @@ fn main() -> Result<()> {
         token_path: expand_tilde(&cli.token_path),
         cosign: !cli.no_cosign,
         cosign_key_path: cli.cosign_key.map(|p| expand_tilde(&p)),
+        registry: cli.registry,
     };
 
     match cli.cmd {
@@ -276,12 +295,20 @@ fn main() -> Result<()> {
             } else {
                 args.services
             };
-            orchestrator::run_akeyless(
+            let pushed = orchestrator::run_akeyless(
                 &common,
                 &args.source_flake,
+                &args.arch,
                 args.tag.as_deref(),
                 &services,
-            )
+            )?;
+            // Emit the push manifest to stdout — the {service → digest}
+            // set the AkeylessEphemeralTenant `digest_set` + admission
+            // gate consume. Pipeable into the next stage.
+            let manifest = serde_json::to_string_pretty(&pushed)
+                .map_err(|e| anyhow::anyhow!("serialize push manifest: {e}"))?;
+            println!("{manifest}");
+            Ok(())
         }
         Cmd::SubmitValidations(_) => unreachable!("handled above before orchestrator::Common"),
     }

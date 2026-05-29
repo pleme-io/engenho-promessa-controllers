@@ -90,6 +90,10 @@ tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 chrono = { version = "0.4", features = ["serde"] }
 blake3 = { version = "1" }
+# Real Ed25519 signing for OutcomeChain receipts (publicly verifiable;
+# same algorithm + publisher-key identity as cartorio/tabeliao).
+ed25519-dalek = { version = "2" }
+const-hex = { version = "1" }
 kube = { version = "0.96", features = ["derive", "runtime", "client", "rustls-tls"] }
 kube-runtime = { version = "0.96" }
 k8s-openapi = { version = "0.23", features = ["v1_30"] }
