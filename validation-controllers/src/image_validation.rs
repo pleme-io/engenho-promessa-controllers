@@ -356,15 +356,17 @@ async fn handle_aggregating(
     Ok(Some(new))
 }
 
-/// Attesting → Gating. M1.5 stub: skip cartorio dispatch (Reconciler
-/// not yet shipping), mark cartorio_artifact_state as Active.
+/// Attesting → Gating. Clean pass-through: attestation is configured
+/// OFF (scan-only), so we record Cartorio state as `Pending` (honestly
+/// "not attested") rather than fabricating `Active`. Real cartorio +
+/// OutcomeChain dispatch lands when attestation is turned back on.
 async fn handle_attesting(
     obj: &AkeylessImageValidation,
     _ctx: &ReconcileCtx,
 ) -> Result<Option<AkeylessImageValidationStatus>, kube::Error> {
     let mut new = obj.status.clone().unwrap_or_default();
     new.phase = Some(AkeylessImageValidationPhase::Gating);
-    new.cartorio_artifact_state = Some(validation_crds::CartorioArtifactState::Active);
+    new.cartorio_artifact_state = Some(validation_crds::CartorioArtifactState::Pending);
     new.observed_generation = obj.metadata.generation.unwrap_or(0);
     Ok(Some(new))
 }
@@ -414,6 +416,15 @@ async fn handle_gating(
             GateVerdict::Quarantined,
             json!({"suppressed": true, "failure_count": failure_count}),
         ),
+    };
+
+    // Scan-only: keep the verdict (e.g. Failed on a Critical CVE) but
+    // drop remediation actions — do not auto-revoke/quarantine against
+    // the disabled attestation/cartorio infra.
+    let action_json = if scan_only_mode() {
+        empty.clone()
+    } else {
+        action_json
     };
 
     let mut new = obj.status.clone().unwrap_or_default();
@@ -526,20 +537,35 @@ fn build_scan_job(
 ) -> ScanJob {
     let kind = scanner_kind_from_required(scanner);
     let class = scanner_class_for(scanner);
-    let (digest, source, url) = match class {
-        ScannerClass::Cve | ScannerClass::Hardening => {
-            (Some(parent.spec.image_digest.clone()), None, None)
-        }
-        ScannerClass::Sast => (
+    // Which CR target field a scanner reads is owned by the
+    // scanner-catalog (single source of truth), not guessed from the
+    // class. CVE/SBOM scanners pull a fully-qualified, pullable image
+    // ref from the in-cluster Zot mirror — NOT a bare `sha256:…` digest,
+    // which `trivy image sha256:…` cannot resolve. SAST/secret scanners
+    // read the source git URL; DAST scanners read the live tenant URL.
+    let (digest, source, url) = match scanner_catalog::Catalog::for_kind(kind).target_field {
+        scanner_catalog::TargetField::Digest => (
+            Some(pullable_image_ref(
+                &parent.spec.image_repo,
+                &parent.spec.image_digest,
+            )),
             None,
-            Some(format!("git+https://github.com/akeylesslabs/akeyless-main-repo")),
             None,
         ),
-        ScannerClass::Dast => (
+        scanner_catalog::TargetField::Source => (
+            None,
+            // Akeyless images all build from akeyless-main-repo; that
+            // monorepo is the SAST/secret-scan source of record. Plain
+            // URL (no `git+` prefix — trufflehog/semgrep reject it).
+            Some("https://github.com/akeylesslabs/akeyless-main-repo".to_owned()),
+            None,
+        ),
+        scanner_catalog::TargetField::TenantUrl => (
             None,
             None,
             tenant.status.as_ref().and_then(|s| s.ingress_url.clone()),
         ),
+        scanner_catalog::TargetField::None => (None, None, None),
     };
     ScanJob {
         metadata: ObjectMeta {
@@ -590,23 +616,22 @@ fn build_security_snapshot(
             }
         }
     }
-    // M1.5 PoC: assume all attestations present (cartorio set Active in handle_attesting).
-    let all_attestations: BTreeSet<RequiredAttestation> = [
-        RequiredAttestation::CartorioActive,
-        RequiredAttestation::CosignSig,
-        RequiredAttestation::SbomSpdx,
-        RequiredAttestation::SlsaProvenance,
-    ]
-    .into_iter()
-    .collect();
+    // Observe attestations HONESTLY: none are wired yet, so report
+    // none present and Cartorio status Pending. With attestation off
+    // (scan-only) `SecuritySpec::scan_only()` requires no attestations,
+    // so an empty set is non-drifting; with attestation on, the empty
+    // set honestly surfaces as missing-attestation drift rather than a
+    // fabricated pass. (Previously this hard-coded all four present +
+    // Cartorio Active — a fake that let unattested digests pass the gate.)
+    let attestations_present: BTreeSet<RequiredAttestation> = BTreeSet::new();
 
     SecuritySnapshot {
         image_digests: vec![DigestObservation {
             digest: parent.spec.image_digest.clone(),
             service: parent.spec.service.clone(),
-            cartorio_status: CartorioStatus::Active,
+            cartorio_status: CartorioStatus::Pending,
             findings,
-            attestations_present: all_attestations,
+            attestations_present,
             scanners_reported,
         }],
         observed_at: Utc::now(),
@@ -695,9 +720,42 @@ fn format_drift_reason(drift: &security_controller::SecurityDrift) -> String {
     }
 }
 
+/// Whether the controller runs in scan-only mode — attestation/signing
+/// turned OFF. Set `VALIDATION_SCAN_ONLY=true` on the controller
+/// Deployment to judge verdicts purely on CVE/SAST/DAST findings
+/// without requiring (or fabricating) Cartorio/Cosign/SBOM/SLSA
+/// attestations.
+fn scan_only_mode() -> bool {
+    std::env::var("VALIDATION_SCAN_ONLY")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes"))
+        .unwrap_or(false)
+}
+
+/// Build a fully-qualified, pullable image reference for a CVE scanner
+/// from the image's repo + digest. Prefers the in-cluster Zot mirror
+/// (`SCANNER_REGISTRY_MIRROR`, e.g.
+/// `zot.zot-system.svc.cluster.local:5000`) so scanner Jobs pull
+/// privately + air-gapped; falls back to bare `<repo>@<digest>` when no
+/// mirror is configured.
+fn pullable_image_ref(repo: &str, digest: &str) -> String {
+    match std::env::var("SCANNER_REGISTRY_MIRROR")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
+        Some(mirror) => format!("{}/{}@{}", mirror.trim_end_matches('/'), repo, digest),
+        None => format!("{repo}@{digest}"),
+    }
+}
+
 fn security_spec_for(_promessa_ref: &str) -> SecuritySpec {
-    // M1.5: resolve the promessa name to a typed SecuritySpec by
-    // hard-coding the default. M2 wires this to promessa-runtime which
-    // reads the .tatara source-of-truth and caches it.
-    SecuritySpec::default()
+    // M1.5: resolve the promessa name to a typed SecuritySpec. With
+    // attestation turned off (VALIDATION_SCAN_ONLY) we drop the
+    // required-attestation set so verdicts rest purely on scan
+    // findings. M2 wires this to promessa-runtime which reads the
+    // .tatara source-of-truth and caches it.
+    if scan_only_mode() {
+        SecuritySpec::scan_only()
+    } else {
+        SecuritySpec::default()
+    }
 }

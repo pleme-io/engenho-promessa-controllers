@@ -190,6 +190,52 @@ async fn resolve_latest_digest(
     Ok((tag, digest))
 }
 
+/// Apply AkeylessImageValidation CRs for images already pushed to Zot
+/// (digest captured at push time by [`crate::orchestrator::push_akeyless_images`]).
+///
+/// Unlike [`run`], this never touches Zot — the digests are already
+/// known — so it needs only the kube apiserver, no port-forward. This
+/// is the `push-and-submit` apply phase; it also bypasses the fragile
+/// lexical `tags.last()` rediscovery `run` uses.
+///
+/// `attestation_mode` is stamped as an annotation for observability;
+/// the controller's behaviour (scan-only vs gated) is governed by its
+/// own `VALIDATION_SCAN_ONLY` env, not this annotation.
+pub async fn apply_pushed(
+    args: SubmitArgs,
+    attestation_mode: &str,
+    pushed: &[crate::orchestrator::PushedImage],
+) -> Result<()> {
+    if pushed.is_empty() {
+        return Err(anyhow!("no images were pushed — nothing to submit"));
+    }
+    let client = if args.dry_run {
+        None
+    } else {
+        Some(Client::try_default().await.context("kube::Client::try_default")?)
+    };
+    for img in pushed {
+        let mut cr = build_cr(&args, &img.service, &img.repo, &img.digest);
+        cr.metadata
+            .annotations
+            .get_or_insert_with(Default::default)
+            .insert(
+                "validation.pleme.io/attestation-mode".to_owned(),
+                attestation_mode.to_owned(),
+            );
+        let cr_name = cr.metadata.name.clone().unwrap_or_default();
+        tracing::info!(repo = %img.repo, digest = %img.digest, cr = %cr_name, "push-and-submit applying");
+        if let Some(client) = client.as_ref() {
+            apply_cr(client.clone(), &args.namespace, cr).await?;
+        } else {
+            println!("---");
+            println!("{}", serde_json::to_string_pretty(&cr)?);
+        }
+    }
+    tracing::info!(count = pushed.len(), "push-and-submit: CRs applied");
+    Ok(())
+}
+
 /// Build the typed CR. `name` is digest-suffixed so re-pushes at a
 /// new tag create distinct CRs (the controller can clean stale ones
 /// via the `keep_for` field).

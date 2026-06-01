@@ -129,11 +129,16 @@ impl Catalog {
                 default_enabled: true,
                 image: "aquasec/trivy:0.50.0",
                 target_field: T::Digest,
+                // Emit JSON to STDOUT (no `--output` file): the
+                // controller's `collect_results` reads pod logs, and the
+                // scan pod's emptyDir is gone by the time we read. `--quiet`
+                // keeps the progress bar off the (merged) log stream so the
+                // logs are clean JSON.
                 args: ArgsTemplate::Static(&[
                     "image",
+                    "--quiet",
                     "--format=json",
                     "--severity=CRITICAL,HIGH,MEDIUM,LOW",
-                    "--output=/scan/result.json",
                     "${target}",
                 ]),
                 output_format: O::TrivyJson,
@@ -145,11 +150,14 @@ impl Catalog {
                 default_enabled: true,
                 image: "anchore/grype:v0.74.7",
                 target_field: T::Digest,
+                // JSON to STDOUT (no `--file`). `-q` silences progress.
+                // No `--fail-on`: the scanner must exit 0 so the Job
+                // succeeds and the verdict is decided by SecurityController
+                // from the findings, not by the scanner's exit code.
                 args: ArgsTemplate::Static(&[
                     "${target}",
+                    "-q",
                     "-o", "json",
-                    "--file", "/scan/result.json",
-                    "--fail-on", "negligible",
                 ]),
                 output_format: O::GrypeJson,
                 upstream_url: "https://github.com/anchore/grype",
@@ -161,9 +169,12 @@ impl Catalog {
                 default_enabled: true,
                 image: "anchore/syft:v1.4.1",
                 target_field: T::Digest,
+                // SBOM to STDOUT (`spdx-json` with no `=file`). `-q`
+                // silences the status line.
                 args: ArgsTemplate::Static(&[
                     "${target}",
-                    "-o", "spdx-json=/scan/result.json",
+                    "-q",
+                    "-o", "spdx-json",
                 ]),
                 output_format: O::SyftSpdx,
                 upstream_url: "https://github.com/anchore/syft",
@@ -191,11 +202,15 @@ impl Catalog {
                 default_enabled: true,
                 image: "returntocorp/semgrep:1.78.0",
                 target_field: T::Source,
+                // SARIF to STDOUT (no `--output`). `--quiet` keeps
+                // progress off the log stream. NOTE: `--config=auto`
+                // fetches rules from semgrep.dev — needs egress :443, or
+                // pin a mirrored ruleset for air-gap (W2 followup).
                 args: ArgsTemplate::Static(&[
                     "semgrep",
+                    "--quiet",
                     "--config=auto",
                     "--sarif",
-                    "--output=/scan/result.json",
                     "${target}",
                 ]),
                 output_format: O::SemgrepSarif,
@@ -253,12 +268,13 @@ impl Catalog {
                 // Reuse Trivy's k8s posture mode — same image, different verb.
                 image: "aquasec/trivy:0.50.0",
                 target_field: T::None,
+                // JSON to STDOUT (no `--output`); `--quiet` for clean logs.
                 args: ArgsTemplate::Static(&[
                     "k8s",
+                    "--quiet",
                     "--report=summary",
                     "--format=json",
                     "--compliance=k8s-cis",
-                    "--output=/scan/result.json",
                 ]),
                 output_format: O::TrivyJson,
                 upstream_url: "https://aquasecurity.github.io/trivy/latest/docs/target/kubernetes/",

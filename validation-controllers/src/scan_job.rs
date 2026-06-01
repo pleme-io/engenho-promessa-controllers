@@ -142,8 +142,9 @@ async fn create_scanner_job(ctx: &ReconcileCtx, sj: &ScanJob) -> Result<(), kube
 fn render_job(job_name: &str, sj: &ScanJob) -> Job {
     use k8s_openapi::api::batch::v1::JobSpec;
     use k8s_openapi::api::core::v1::{
-        Capabilities, Container, EmptyDirVolumeSource, EnvVar, PodSecurityContext, PodSpec,
-        PodTemplateSpec, SeccompProfile, SecurityContext, Volume, VolumeMount,
+        Capabilities, Container, EmptyDirVolumeSource, EnvVar, LocalObjectReference,
+        PodSecurityContext, PodSpec, PodTemplateSpec, SeccompProfile, SecurityContext, Volume,
+        VolumeMount,
     };
 
     let ns = sj.namespace().unwrap_or_default();
@@ -176,6 +177,12 @@ fn render_job(job_name: &str, sj: &ScanJob) -> Job {
                 }),
                 spec: Some(PodSpec {
                     restart_policy: Some("Never".into()),
+                    // Pull the scanner tool image (and, for kubelet-side
+                    // pulls, the target) from the private Zot. Harmless if
+                    // Zot allows anonymous read; required if it doesn't.
+                    image_pull_secrets: Some(vec![LocalObjectReference {
+                        name: "zot-pull-secret".into(),
+                    }]),
                     security_context: Some(PodSecurityContext {
                         run_as_non_root: Some(true),
                         run_as_user: Some(65532),
@@ -199,11 +206,29 @@ fn render_job(job_name: &str, sj: &ScanJob) -> Job {
                             }),
                             ..Default::default()
                         }),
-                        env: Some(vec![EnvVar {
-                            name: "TRIVY_CACHE_DIR".into(),
-                            value: Some("/scan/cache".into()),
-                            ..Default::default()
-                        }]),
+                        // Let the OSS scanners reach the plain-HTTP
+                        // in-cluster Zot for the image-under-test. Trivy /
+                        // Grype / Syft each have their own insecure-registry
+                        // toggles; setting all is harmless to scanners that
+                        // ignore them.
+                        env: Some(
+                            [
+                                ("TRIVY_CACHE_DIR", "/scan/cache"),
+                                ("TRIVY_INSECURE", "true"),
+                                ("TRIVY_NON_SSL", "true"),
+                                ("GRYPE_REGISTRY_INSECURE_SKIP_TLS_VERIFY", "true"),
+                                ("GRYPE_REGISTRY_INSECURE_USE_HTTP", "true"),
+                                ("SYFT_REGISTRY_INSECURE_SKIP_TLS_VERIFY", "true"),
+                                ("SYFT_REGISTRY_INSECURE_USE_HTTP", "true"),
+                            ]
+                            .into_iter()
+                            .map(|(k, v)| EnvVar {
+                                name: k.into(),
+                                value: Some(v.into()),
+                                ..Default::default()
+                            })
+                            .collect(),
+                        ),
                         volume_mounts: Some(vec![
                             VolumeMount {
                                 name: "scan-result".into(),

@@ -72,20 +72,39 @@ pub fn run_substrate(
     Ok(())
 }
 
-/// Push the named Akeyless services from `source_flake` (tag
-/// optional — defaults to the docker-archive's baked-in RepoTags[0]).
-pub fn run_akeyless(
+/// A single Akeyless image pushed to Zot, with the digest Zot
+/// assigned its manifest. Captured at push time so the submit phase
+/// can build digest-pinned CRs without re-discovering tags (avoids
+/// the fragile `tags.last()` lexical guess in `submit-validations`).
+#[derive(Debug, Clone)]
+pub struct PushedImage {
+    pub service: String,
+    pub repo: String,
+    pub digest: String,
+}
+
+/// Build + push the named Akeyless services from `source_flake` (tag
+/// optional — defaults to the docker-archive's baked-in RepoTags[0]),
+/// returning each pushed image's (service, repo, digest).
+///
+/// The nix attribute is `dockerImage:amd64:<service>`: the umbrella
+/// flake namespaces every per-service package key with the arch
+/// (`dockerImage:amd64`) then suffixes the service name. There is no
+/// bare `dockerImage:<service>` attr — building it fails with
+/// "attribute not found".
+pub fn push_akeyless_images(
     common: &Common,
     source_flake: &Path,
     tag_override: Option<&str>,
     services: &[String],
-) -> Result<()> {
+) -> Result<Vec<PushedImage>> {
     tracing::info!(?source_flake, ?tag_override, ?services, "private-push akeyless starting");
     let _pf = start_port_forward(common)?;
     skopeo_login(common)?;
 
+    let mut pushed = Vec::with_capacity(services.len());
     for service in services {
-        let nix_attr = format!("dockerImage:{service}");
+        let nix_attr = format!("dockerImage:amd64:{service}");
         let result_link = source_flake.join(format!("result-{service}"));
         nix_build(source_flake, &nix_attr, &result_link)?;
 
@@ -105,9 +124,30 @@ pub fn run_akeyless(
             )?;
         }
 
+        // Capture the digest Zot assigned the pushed manifest so the
+        // submit phase pins each CR by digest deterministically.
+        let digest = resolve_pushed_digest(&dest)?;
+        pushed.push(PushedImage {
+            service: service.clone(),
+            repo: format!("akeyless-{service}"),
+            digest,
+        });
+
         std::fs::remove_file(&result_link).ok();
     }
-    tracing::info!("private-push akeyless done");
+    tracing::info!(count = pushed.len(), "private-push akeyless done");
+    Ok(pushed)
+}
+
+/// Push the named Akeyless services (no CR submission). Thin wrapper
+/// over [`push_akeyless_images`] for the bare `akeyless` subcommand.
+pub fn run_akeyless(
+    common: &Common,
+    source_flake: &Path,
+    tag_override: Option<&str>,
+    services: &[String],
+) -> Result<()> {
+    push_akeyless_images(common, source_flake, tag_override, services)?;
     Ok(())
 }
 
@@ -207,24 +247,29 @@ fn skopeo_copy(result_link: &Path, dest: &str) -> Result<()> {
     subprocess::run_checked("skopeo copy", cmd)
 }
 
+/// Resolve the manifest digest Zot assigned a just-pushed tagged
+/// reference (`localhost:<port>/<repo>:<tag>`). Both cosign and the
+/// validation CRs pin by digest, never tag.
+fn resolve_pushed_digest(dest_tagged: &str) -> Result<String> {
+    let mut cmd = Command::new("skopeo");
+    cmd.arg("inspect")
+        .arg("--tls-verify=false")
+        .arg(format!("docker://{dest_tagged}"))
+        .arg("--format")
+        .arg("{{.Digest}}");
+    Ok(subprocess::run_capture("skopeo inspect", cmd)?
+        .trim()
+        .to_owned())
+}
+
 fn cosign_sign(
     port: u16,
     repo: &str,
     dest_tagged: &str,
     key_path: Option<&Path>,
 ) -> Result<()> {
-    // Resolve to digest first — cosign signs by digest, not tag.
-    let digest = {
-        let mut cmd = Command::new("skopeo");
-        cmd.arg("inspect")
-            .arg("--tls-verify=false")
-            .arg(format!("docker://{dest_tagged}"))
-            .arg("--format")
-            .arg("{{.Digest}}");
-        subprocess::run_capture("skopeo inspect", cmd)?
-            .trim()
-            .to_owned()
-    };
+    // cosign signs by digest, not tag — resolve the pushed digest.
+    let digest = resolve_pushed_digest(dest_tagged)?;
     let ref_by_digest = format!("localhost:{port}/{repo}@{digest}");
 
     let mut cmd = Command::new("cosign");

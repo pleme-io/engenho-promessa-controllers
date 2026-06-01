@@ -124,6 +124,12 @@ enum Cmd {
     /// patch-type (idempotent), reqwest for the Zot v2 OCI API
     /// digest discovery. No kubectl/curl subprocess.
     SubmitValidations(SubmitArgs),
+    /// One-shot: build + push all Akeyless services to Zot (holding a
+    /// single port-forward), capturing each pushed digest, then apply
+    /// one digest-pinned AkeylessImageValidation CR per image. The
+    /// canonical operator entrypoint for "push every image + start
+    /// scanning every image".
+    PushAndSubmit(PushAndSubmitArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -193,6 +199,51 @@ struct SubmitArgs {
 
     /// Only submit for these services; empty = every `akeyless-*`
     /// repo in Zot's catalog.
+    services: Vec<String>,
+}
+
+#[derive(Parser, Debug)]
+struct PushAndSubmitArgs {
+    /// Override tag instead of using each docker-archive's baked tag.
+    #[arg(long)]
+    tag: Option<String>,
+
+    /// nix-flake directory containing `dockerImage:amd64:<service>`
+    /// outputs (the akeyless-nix-images checkout).
+    #[arg(long, default_value = ".")]
+    source_flake: PathBuf,
+
+    /// Namespace for the AkeylessImageValidation CRs.
+    #[arg(long, env = "PRIVATE_PUSH_VALIDATION_NS", default_value = "akeyless-validation")]
+    cr_namespace: String,
+
+    /// Promessa to reference on every emitted CR.
+    #[arg(
+        long,
+        env = "PRIVATE_PUSH_PROMESSA_REF",
+        default_value = "akeyless-nix-images-fedramp-scr"
+    )]
+    promessa_ref: String,
+
+    /// Compliance pack to reference on every emitted CR.
+    #[arg(
+        long,
+        env = "PRIVATE_PUSH_PACK",
+        default_value = "fedramp-high-akeyless-go-image@1"
+    )]
+    pack: String,
+
+    /// Attestation mode stamped on each CR as an annotation. The
+    /// controller's actual behaviour is governed by its
+    /// `VALIDATION_SCAN_ONLY` env; this is for observability.
+    #[arg(long, default_value = "scan-only")]
+    attestation_mode: String,
+
+    /// Print would-be CRs without applying (push still happens).
+    #[arg(long)]
+    dry_run: bool,
+
+    /// Services to push + submit. Default: all 9.
     services: Vec<String>,
 }
 
@@ -282,6 +333,41 @@ fn main() -> Result<()> {
                 args.tag.as_deref(),
                 &services,
             )
+        }
+        Cmd::PushAndSubmit(args) => {
+            let services = if args.services.is_empty() {
+                AKEYLESS_DEFAULTS.iter().map(|s| (*s).to_owned()).collect()
+            } else {
+                args.services
+            };
+            // Phase 1 (sync, port-forward held): build + push all 9,
+            // capturing the digest Zot assigned each manifest.
+            let pushed = orchestrator::push_akeyless_images(
+                &common,
+                &args.source_flake,
+                args.tag.as_deref(),
+                &services,
+            )?;
+            // Phase 2 (async, apiserver only — no port-forward needed):
+            // apply one digest-pinned CR per pushed image.
+            let submit_args = submit::SubmitArgs {
+                zot_endpoint: format!("localhost:{}", common.port),
+                namespace: args.cr_namespace,
+                promessa_ref: args.promessa_ref,
+                pack: args.pack,
+                services: Vec::new(),
+                basic_auth: None,
+                dry_run: args.dry_run,
+            };
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| anyhow::anyhow!("build tokio runtime: {e}"))?;
+            rt.block_on(submit::apply_pushed(
+                submit_args,
+                &args.attestation_mode,
+                &pushed,
+            ))
         }
         Cmd::SubmitValidations(_) => unreachable!("handled above before orchestrator::Common"),
     }
