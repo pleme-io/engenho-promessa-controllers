@@ -185,9 +185,15 @@ impl Catalog {
                 class: C::Sast,
                 default_enabled: true,
                 image: "trufflesecurity/trufflehog:3.78.0",
-                target_field: T::Source,
+                // Scan the OCI IMAGE for secrets (layers + binary) from
+                // the in-cluster Zot — air-gap clean, no private-source
+                // clone or git credential. Digest target = the pullable
+                // zot ref; NDJSON to stdout. (Verify-on-cluster: trufflehog
+                // docker source reaching the plain-HTTP Zot.)
+                target_field: T::Digest,
                 args: ArgsTemplate::Static(&[
-                    "git",
+                    "docker",
+                    "--image",
                     "${target}",
                     "--json",
                     "--no-update",

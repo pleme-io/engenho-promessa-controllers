@@ -747,15 +747,55 @@ fn pullable_image_ref(repo: &str, digest: &str) -> String {
     }
 }
 
+/// DAST (live-target scanners) is OFF by default — it needs a running
+/// target (the deployed self-hosted SaaS). Flip `DAST_ENABLED=true`
+/// once a target is fed (`DAST_TARGET_URL`) or generated.
+fn dast_enabled() -> bool {
+    std::env::var("DAST_ENABLED")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes"))
+        .unwrap_or(false)
+}
+
+/// Source-targeting SAST (semgrep / codeql / kube-linter) is OFF by
+/// default — it needs the private akeyless-main-repo source, i.e. a
+/// clone credential + (for semgrep) a mirrored ruleset. Flip
+/// `SAST_SOURCE_ENABLED=true` once that's wired. Secrets-SAST
+/// (trufflehog, now image-targeted) stays on air-gapped.
+fn sast_source_enabled() -> bool {
+    std::env::var("SAST_SOURCE_ENABLED")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes"))
+        .unwrap_or(false)
+}
+
 fn security_spec_for(_promessa_ref: &str) -> SecuritySpec {
     // M1.5: resolve the promessa name to a typed SecuritySpec. With
     // attestation turned off (VALIDATION_SCAN_ONLY) we drop the
-    // required-attestation set so verdicts rest purely on scan
-    // findings. M2 wires this to promessa-runtime which reads the
-    // .tatara source-of-truth and caches it.
-    if scan_only_mode() {
+    // required-attestation set so verdicts rest purely on scan findings.
+    let mut spec = if scan_only_mode() {
         SecuritySpec::scan_only()
     } else {
         SecuritySpec::default()
-    }
+    };
+
+    // Run only scanners whose target is achievable NOW. By the catalog's
+    // typed target_field:
+    //   - TenantUrl (DAST: zap/burp) → needs a LIVE target → gated on DAST_ENABLED.
+    //   - Source (semgrep/codeql/kube-linter) → needs the private source → gated on SAST_SOURCE_ENABLED.
+    //   - Digest (trivy/grype/syft/trufflehog) → scans the Zot image → always on.
+    //   - None (kube-bench/-hunter/polaris/stig) → scans the cluster → always on.
+    // So CVE + SBOM + secrets-SAST + cluster-posture run air-gapped by
+    // default; DAST + source-SAST are flagged off until their external
+    // requirement is satisfied. The gate's missing_scanners check only
+    // expects the scanners that actually run (required_scanners drives both).
+    let dast = dast_enabled();
+    let source = sast_source_enabled();
+    spec.required_scanners.retain(|s| {
+        let kind = scanner_kind_from_required(*s);
+        match scanner_catalog::Catalog::for_kind(kind).target_field {
+            scanner_catalog::TargetField::TenantUrl => dast,
+            scanner_catalog::TargetField::Source => source,
+            scanner_catalog::TargetField::Digest | scanner_catalog::TargetField::None => true,
+        }
+    });
+    spec
 }
