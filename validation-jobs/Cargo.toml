@@ -1,0 +1,20 @@
+[package]
+name = "validation-jobs"
+version = "0.1.0"
+edition = "2021"
+description = "Per-image scan work graph as a typed shigoto Dag (epc.* Jobs)"
+license = "MIT"
+
+[dependencies]
+shigoto-types = { workspace = true }
+shigoto-dag = { workspace = true }
+shigoto-scheduler = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+blake3 = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

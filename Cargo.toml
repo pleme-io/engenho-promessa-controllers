@@ -46,6 +46,13 @@ members = [
   # — any pleme-io crate or external SDK can depend on this without
   # pulling validation-controllers.
   "validation-events",
+  # validation-jobs — the per-image scan work graph expressed as a
+  # typed shigoto Dag of Jobs (epc.scan-* fan-out -> epc.aggregate
+  # fan-in). Per the org ★★ shigoto directive: the controllers'
+  # internal work graph is a shigoto Dag, not a hand-rolled phase
+  # ladder. The kube-rs reconcilers stay the trigger; this crate owns
+  # the work graph each reconcile drives.
+  "validation-jobs",
 ]
 
 [workspace.package]
@@ -76,6 +83,9 @@ promessa-types = { git = "https://github.com/pleme-io/promessa", branch = "main"
 promessa-runtime = { git = "https://github.com/pleme-io/promessa", branch = "main" }
 promessa-store = { git = "https://github.com/pleme-io/promessa", branch = "main" }
 shigoto-dag = { git = "https://github.com/pleme-io/shigoto", branch = "main" }
+shigoto-types = { git = "https://github.com/pleme-io/shigoto", branch = "main" }
+shigoto-scheduler = { git = "https://github.com/pleme-io/shigoto", branch = "main" }
+validation-jobs = { path = "validation-jobs" }
 shikumi = { git = "https://github.com/pleme-io/shikumi", branch = "main" }
 cofre-types = { git = "https://github.com/pleme-io/cofre", branch = "main" }
 serde = { version = "1", features = ["derive"] }
