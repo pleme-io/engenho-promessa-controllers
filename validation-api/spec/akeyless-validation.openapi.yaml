@@ -1,0 +1,279 @@
+openapi: "3.0.3"
+info:
+  title: Akeyless Image Validation API
+  description: |
+    Spec-first source of truth for the akeyless image-validation status API.
+
+    Per the pleme-io ★★ SPEC-FIRST API STANDARD (Blackmatter Pillar 3 + 4):
+    this OpenAPI spec is the SINGLE source of truth. `forge-gen` (see
+    `forge-gen.toml`) projects it into central data structures + REST
+    (rust-axum) + gRPC (protobuf-schema -> tonic) + GraphQL (graphql-schema
+    -> async-graphql) + MCP (mcp-rust) + SDKs/docs/completions, all written
+    to `gen/` and never hand-edited. The data layer is the SeaORM
+    `validation-store` (entities: validation_run / scan_finding /
+    decision_audit / reconciler_outcome / digest_provenance).
+
+    Canonical template: pleme-io/pangea-api. Governing skills: api-spec-flow,
+    iac-generation.
+  version: "1.0.0"
+  license:
+    name: Proprietary
+servers:
+  - url: https://validation-api.dev.use1.quero.lol
+    description: pleme-dev
+tags:
+  - name: images
+    description: Per-image aggregate validation + CVE/SAST/DAST status (the operator deliverable).
+  - name: validations
+    description: AkeylessImageValidation runs.
+  - name: scan-jobs
+    description: Individual scanner Jobs (CVE / SAST / DAST / hardening).
+  - name: findings
+    description: Typed scan findings.
+  - name: compliance
+    description: Fleet-wide compliance roll-ups.
+
+paths:
+  /v1/images:
+    get:
+      tags: [images]
+      operationId: listImages
+      summary: List every image with its aggregate CVE/SAST/DAST status.
+      description: |
+        THE operator deliverable: one row per image with a per-class
+        (CVE / SAST / DAST / hardening) breakdown of scanners run, findings
+        count, and max severity — synthesized by grouping ScanJobs on their
+        parent validation and bucketing by scanner class.
+      parameters:
+        - { name: phase, in: query, required: false, schema: { $ref: "#/components/schemas/ValidationPhase" } }
+        - { name: service, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: All images with aggregate status.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ImageStatus" }
+  /v1/images/{service}:
+    get:
+      tags: [images]
+      operationId: getImageStatus
+      summary: Aggregate CVE/SAST/DAST status for one image (latest validation).
+      parameters:
+        - { name: service, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The image's aggregate status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImageStatus" }
+        "404":
+          description: No validation found for the service.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+
+  /v1/validations:
+    get:
+      tags: [validations]
+      operationId: listImageValidations
+      parameters:
+        - { name: phase, in: query, required: false, schema: { $ref: "#/components/schemas/ValidationPhase" } }
+        - { name: repo, in: query, required: false, schema: { type: string } }
+        - { name: digest, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: All validation runs.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ImageValidation" } }
+  /v1/validations/{namespace}/{name}:
+    get:
+      tags: [validations]
+      operationId: getImageValidation
+      parameters:
+        - { name: namespace, in: path, required: true, schema: { type: string } }
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: One validation run.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ImageValidation" } } }
+        "404":
+          description: Not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+  /v1/validations/{namespace}/{name}/findings:
+    get:
+      tags: [findings]
+      operationId: listValidationFindings
+      parameters:
+        - { name: namespace, in: path, required: true, schema: { type: string } }
+        - { name: name, in: path, required: true, schema: { type: string } }
+        - { name: severity, in: query, required: false, schema: { $ref: "#/components/schemas/Severity" } }
+        - { name: scannerClass, in: query, required: false, schema: { $ref: "#/components/schemas/ScannerClass" } }
+      responses:
+        "200":
+          description: Typed findings for the validation, across all scanners.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ScanFinding" } }
+
+  /v1/scan-jobs:
+    get:
+      tags: [scan-jobs]
+      operationId: listScanJobs
+      parameters:
+        - { name: validation, in: query, required: false, schema: { type: string } }
+        - { name: scannerClass, in: query, required: false, schema: { $ref: "#/components/schemas/ScannerClass" } }
+        - { name: phase, in: query, required: false, schema: { $ref: "#/components/schemas/ScanJobPhase" } }
+      responses:
+        "200":
+          description: All scan jobs.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ScanJob" } } } }
+
+  /v1/compliance-summary:
+    get:
+      tags: [compliance]
+      operationId: getComplianceSummary
+      responses:
+        "200":
+          description: Fleet-wide phase/verdict counts.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ComplianceSummary" } } }
+
+  /v1/healthz:
+    get:
+      tags: [compliance]
+      operationId: healthz
+      responses: { "200": { description: OK } }
+  /v1/readyz:
+    get:
+      tags: [compliance]
+      operationId: readyz
+      responses:
+        "200": { description: Ready (informer caches synced) }
+        "503": { description: Not ready }
+
+components:
+  schemas:
+    ValidationPhase:
+      type: string
+      enum: [Pending, Provisioning, Scanning, Aggregating, Attesting, Gating, Passed, Failed, Quarantined]
+    ScanJobPhase:
+      type: string
+      enum: [Pending, Forking, Execing, Running, Attested, Reconverging, Exiting, Failed, Zombie, Reaped]
+    Severity:
+      type: string
+      enum: [Critical, High, Medium, Low, Info]
+    ScannerClass:
+      type: string
+      enum: [Cve, Sast, Dast, Hardening]
+    ScannerKind:
+      type: string
+      enum: [Trivy, Grype, Syft, Trufflehog, Semgrep, KubeLinter, KubeBench, KubeHunter, Polaris, StigCisValidator, Zap, Snyk, DockerScout, JfrogXray, Wiz, PrismaCloud, BurpEnterprise, Codeql]
+    GateVerdict:
+      type: string
+      enum: [Passed, Failed, Quarantined]
+
+    # ── The deliverable: per-image aggregate, per scanner class ──────────
+    ImageStatus:
+      type: object
+      required: [service, imageDigest, phase, cve, sast, dast, hardening]
+      properties:
+        service: { type: string, example: auth }
+        imageRepo: { type: string, example: akeyless-auth }
+        imageDigest: { type: string, pattern: "^sha256:[a-f0-9]{64}$" }
+        validationName: { type: string }
+        phase: { $ref: "#/components/schemas/ValidationPhase" }
+        verdict: { $ref: "#/components/schemas/GateVerdict" }
+        cve: { $ref: "#/components/schemas/ClassStatus" }
+        sast: { $ref: "#/components/schemas/ClassStatus" }
+        dast: { $ref: "#/components/schemas/ClassStatus" }
+        hardening: { $ref: "#/components/schemas/ClassStatus" }
+        lastSeenAt: { type: string, format: date-time }
+    ClassStatus:
+      type: object
+      description: Aggregate of one scanner class (CVE/SAST/DAST/hardening) for an image.
+      required: [scannersRun, findingsCount]
+      properties:
+        scannersRun: { type: integer, description: How many scanners of this class reported. }
+        findingsCount: { type: integer }
+        maxSeverity: { $ref: "#/components/schemas/Severity" }
+        scanners:
+          type: array
+          items: { $ref: "#/components/schemas/ScannerKind" }
+
+    ImageValidation:
+      type: object
+      required: [namespace, name, imageDigest, service, phase]
+      properties:
+        namespace: { type: string }
+        name: { type: string }
+        imageDigest: { type: string, pattern: "^sha256:[a-f0-9]{64}$" }
+        imageRepo: { type: string }
+        service: { type: string }
+        phase: { $ref: "#/components/schemas/ValidationPhase" }
+        verdict: { $ref: "#/components/schemas/GateVerdict" }
+        evidenceBundleHash: { type: string, description: "blake3 of canonical findings", nullable: true }
+        scanJobs:
+          type: array
+          items: { $ref: "#/components/schemas/ScanJobSummary" }
+        startedAt: { type: string, format: date-time, nullable: true }
+        terminalAt: { type: string, format: date-time, nullable: true }
+    ScanJobSummary:
+      type: object
+      required: [name, scanner, phase, findingsCount]
+      properties:
+        name: { type: string }
+        scanner: { $ref: "#/components/schemas/ScannerKind" }
+        scannerClass: { $ref: "#/components/schemas/ScannerClass" }
+        phase: { $ref: "#/components/schemas/ScanJobPhase" }
+        findingsCount: { type: integer }
+
+    ScanJob:
+      type: object
+      required: [namespace, name, scanner, scannerClass, parentValidation, phase]
+      properties:
+        namespace: { type: string }
+        name: { type: string }
+        scanner: { $ref: "#/components/schemas/ScannerKind" }
+        scannerClass: { $ref: "#/components/schemas/ScannerClass" }
+        parentValidation: { type: string }
+        phase: { $ref: "#/components/schemas/ScanJobPhase" }
+        findings:
+          type: array
+          items: { $ref: "#/components/schemas/ScanFinding" }
+
+    ScanFinding:
+      type: object
+      required: [scanner, scannerClass, severity]
+      properties:
+        scanner: { $ref: "#/components/schemas/ScannerKind" }
+        scannerClass: { $ref: "#/components/schemas/ScannerClass" }
+        severity: { $ref: "#/components/schemas/Severity" }
+        cveId: { type: string, nullable: true }
+        package: { type: string, nullable: true }
+        fixedIn: { type: string, nullable: true }
+        location: { type: string, nullable: true, description: "SAST: file:line; DAST: endpoint." }
+        message: { type: string, nullable: true }
+        exceptionId: { type: string, nullable: true }
+        firstSeenAt: { type: string, format: date-time }
+
+    ComplianceSummary:
+      type: object
+      required: [totalDigests, byPhase, byVerdict]
+      properties:
+        totalDigests: { type: integer }
+        byPhase:
+          type: object
+          additionalProperties: { type: integer }
+        byVerdict:
+          type: object
+          additionalProperties: { type: integer }
+        blocking:
+          type: array
+          items: { type: string }
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        detail: { type: string, nullable: true }

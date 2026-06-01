@@ -1,0 +1,49 @@
+# forge-gen manifest — akeyless image-validation status API.
+#
+# Projects spec/akeyless-validation.openapi.yaml into every transport +
+# the MCP server + schemas + docs, all under gen/ (never hand-edited).
+# Per the pleme-io ★★ SPEC-FIRST API STANDARD (Pillar 3). Template:
+# pleme-io/pangea-api.
+#
+# Run: nix run .#forge   (followup: add the flake `.#forge` app, mirror
+#                          pangea-api/flake.nix; CI spec-diff gate).
+
+[spec]
+path = "spec/akeyless-validation.openapi.yaml"
+
+[output]
+dir = "gen"
+
+# ── Servers ──────────────────────────────────────────────────────────
+# rust-axum handler trait → implemented by validation-api/src/routes.
+[servers]
+targets = ["rust-axum"]
+
+# ── MCP server (Pillar 3) ────────────────────────────────────────────
+[mcp]
+targets = ["mcp-rust"]
+name = "akeyless-validation"
+description = "MCP server for akeyless image-validation status (CVE/SAST/DAST)"
+
+# ── Client SDKs ──────────────────────────────────────────────────────
+[sdks]
+targets = ["rust", "python", "typescript", "go"]
+name = "akeyless-validation"
+
+# ── Schemas (GraphQL / Protobuf / Postgres / JSON consumers) ─────────
+# graphql-schema  → async-graphql surface
+# protobuf-schema → tonic gRPC (replaces hand-authored proto/validation.proto)
+# postgresql-schema → cross-checks the SeaORM validation-store schema
+[schemas]
+targets = ["graphql-schema", "protobuf-schema", "postgresql-schema", "json-schema"]
+
+# ── Documentation ────────────────────────────────────────────────────
+[docs]
+targets = ["markdown"]
+
+# ── CLI completions ──────────────────────────────────────────────────
+[completions]
+targets = ["skim-tab", "fish"]
+name = "akeyless-validation"
+icon = "V"
+grouping = "tag"
