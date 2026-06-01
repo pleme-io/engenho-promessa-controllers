@@ -60,22 +60,27 @@ What it does:
 
 ```sh
 cd ~/code/github/akeylesslabs/akeyless-nix-images
-nix develop -c scripts/private-push.sh \
-    --kube-context pleme-dev
-    # add `--no-cosign` to skip signing when iterating
+nix run github:pleme-io/engenho-promessa-controllers#private-push -- \
+    push-and-submit --kube-context pleme-dev --attestation-mode scan-only
+    # `--no-cosign` (global) skips signing when iterating;
+    # `--dry-run` prints the CRs without applying (push still happens).
 ```
 
-Loops through all 9 services (`auth uam kfm gator bis logan mark sdr
-gateway`). Each builds via `nix build .#"dockerImage:<svc>"`, then
-skopeo copies via the same port-forward to
-`localhost:5000/akeyless-<svc>:<tag>`. The tag is whatever the nix
-build baked in (typically `latest` or the git short SHA — see
-`lib/mk-akeyless-go-service.nix`).
+`push-and-submit` is the one-shot: it holds a single port-forward, loops
+all 9 services (`auth uam kfm gator bis logan mark sdr gateway`),
+builds each via `nix build .#"dockerImage:amd64:<svc>"`, skopeo-copies to
+`localhost:5000/akeyless-<svc>:<tag>`, captures the digest Zot assigned,
+and applies one digest-pinned `AkeylessImageValidation` CR per image. The
+tag is whatever the nix build baked in (typically `latest` or the git
+short SHA — see `lib/mk-akeyless-go-service.nix`).
 
-Subset push:
+> The deprecated `scripts/private-push.sh` shell flow is removed — the
+> typed Rust `private-push` binary (this repo) is the only path.
+
+Subset:
 ```sh
-scripts/private-push.sh auth uam       # just two
-PRIVATE_PUSH_TAG_OVERRIDE=v1.2.3 scripts/private-push.sh auth
+nix run …#private-push -- push-and-submit auth uam     # just two
+nix run …#private-push -- akeyless auth                # push only, no CR
 ```
 
 > **Reusable-pattern note (FOLLOWUP D-OP-9):** This script and

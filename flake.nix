@@ -110,6 +110,11 @@
             "-p" "reconciler-engine"
             "-p" "validation-controllers"
             "-p" "scanner-catalog"
+            # The one-shot operator driver. Exposed as `apps.private-push`
+            # (wrapped with skopeo/kubectl/cosign/sops on PATH) so
+            # `nix run .#private-push -- push-and-submit ...` works from
+            # the laptop without a manual devShell.
+            "-p" "private-push"
           ];
           doCheck = false;
           # protobuf for validation-api's tonic-build (compiles
@@ -121,6 +126,18 @@
 
         engenho-promessa = workspaceBinaries;
         validation-api  = workspaceBinaries;
+
+        # The one-shot push driver, wrapped so its subprocess deps
+        # (skopeo / kubectl / cosign / sops) are on PATH. `nix` is left
+        # to the ambient environment — the build step runs on the
+        # operator's laptop where nix already exists.
+        private-push-app = pkgs.runCommand "private-push" {
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+        } ''
+          mkdir -p $out/bin
+          makeWrapper ${workspaceBinaries}/bin/private-push $out/bin/private-push \
+            --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.skopeo pkgs.kubectl pkgs.cosign pkgs.sops ]}
+        '';
 
         # ── OCI images via dockerTools.buildLayeredImage ──────────────
         # Each image is a small layered tarball:
@@ -195,11 +212,13 @@
           inherit engenho-promessa validation-api
                   engenho-promessa-image validation-api-image;
           default = engenho-promessa;
+          private-push = private-push-app;
           "image:engenho-promessa" = engenho-promessa-image;
           "image:validation-api"   = validation-api-image;
         };
         apps.default = { type = "app"; program = "${engenho-promessa}/bin/engenho-promessa"; };
         apps.validation-api = { type = "app"; program = "${validation-api}/bin/validation-api"; };
+        apps.private-push = { type = "app"; program = "${private-push-app}/bin/private-push"; };
         devShells.default = pkgs.mkShell {
           name = "engenho-promessa-dev";
           packages = with pkgs; [

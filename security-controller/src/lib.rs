@@ -78,6 +78,23 @@ impl Default for SecuritySpec {
     }
 }
 
+impl SecuritySpec {
+    /// Scan-only posture: run the full OSS scanner pack and judge the
+    /// verdict purely on CVE findings, with attestation/signing turned
+    /// OFF. `required_attestations` is empty, so a digest with zero
+    /// attestations is NOT marked drifting (vs `default()`, which
+    /// requires Cartorio/Cosign/SBOM/SLSA). `required_scanners` stays
+    /// the full pack so `missing_scanners` still proves every scanner
+    /// ran. Selected at runtime when `VALIDATION_SCAN_ONLY` is set.
+    #[must_use]
+    pub fn scan_only() -> Self {
+        Self {
+            required_attestations: BTreeSet::new(),
+            ..Self::default()
+        }
+    }
+}
+
 // ────────────────────────────────────────────────────────────────────
 // SNAPSHOT
 // ────────────────────────────────────────────────────────────────────
