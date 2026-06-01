@@ -143,9 +143,10 @@ fn render_job(job_name: &str, sj: &ScanJob) -> Job {
     use k8s_openapi::api::batch::v1::JobSpec;
     use k8s_openapi::api::core::v1::{
         Capabilities, Container, EmptyDirVolumeSource, EnvVar, LocalObjectReference,
-        PodSecurityContext, PodSpec, PodTemplateSpec, SeccompProfile, SecurityContext, Volume,
-        VolumeMount,
+        PodSecurityContext, PodSpec, PodTemplateSpec, ResourceRequirements, SeccompProfile,
+        SecurityContext, Volume, VolumeMount,
     };
+    use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 
     let ns = sj.namespace().unwrap_or_default();
     let (image, args) = scanner_image_and_args(sj);
@@ -177,6 +178,14 @@ fn render_job(job_name: &str, sj: &ScanJob) -> Job {
                 }),
                 spec: Some(PodSpec {
                     restart_policy: Some("Never".into()),
+                    // Low priority (when SCAN_PRIORITY_CLASS names a
+                    // deployed PriorityClass) so scan pods are preempted
+                    // before the cluster's real workloads under pressure.
+                    // Unset by default → no priorityClassName (safe: a
+                    // missing PriorityClass would fail admission).
+                    priority_class_name: std::env::var("SCAN_PRIORITY_CLASS")
+                        .ok()
+                        .filter(|s| !s.is_empty()),
                     // Pull the scanner tool image (and, for kubelet-side
                     // pulls, the target) from the private Zot. Harmless if
                     // Zot allows anonymous read; required if it doesn't.
@@ -241,6 +250,27 @@ fn render_job(job_name: &str, sj: &ScanJob) -> Job {
                                 ..Default::default()
                             },
                         ]),
+                        // Box every scan pod: modest request so the
+                        // namespace ResourceQuota math works + it schedules
+                        // on a tight node, and a hard limit so a runaway
+                        // scanner can't balloon and cause node contention.
+                        resources: Some(ResourceRequirements {
+                            requests: Some(
+                                [
+                                    ("cpu".to_string(), Quantity("50m".into())),
+                                    ("memory".to_string(), Quantity("128Mi".into())),
+                                ]
+                                .into(),
+                            ),
+                            limits: Some(
+                                [
+                                    ("cpu".to_string(), Quantity("500m".into())),
+                                    ("memory".to_string(), Quantity("512Mi".into())),
+                                ]
+                                .into(),
+                            ),
+                            ..Default::default()
+                        }),
                         ..Default::default()
                     }],
                     volumes: Some(vec![
