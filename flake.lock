@@ -9985,11 +9985,11 @@
         "tatara": "tatara"
       },
       "locked": {
-        "lastModified": 1780115284,
-        "narHash": "sha256-lj4ETWsiqjLubbdD+BMAP3ffyWfq+06tqnXISYgODB8=",
+        "lastModified": 1780478079,
+        "narHash": "sha256-73tCYIS2F1tMxgfiq40RSXiBcQlf/Zhj94jw5jTsoWE=",
         "owner": "pleme-io",
         "repo": "promessa",
-        "rev": "15fd6c08ad78a30c73efc9ecc0c0b98064a598e1",
+        "rev": "fac784673e6c86e6b1fc991e403495e207a16f40",
         "type": "github"
       },
       "original": {
@@ -11099,11 +11099,11 @@
         "substrate": "substrate_5"
       },
       "locked": {
-        "lastModified": 1780471030,
-        "narHash": "sha256-l9Dp+4UCQvlkTfKGCTaj80bmQCfdaGXjO8EHHDI0++A=",
+        "lastModified": 1780477340,
+        "narHash": "sha256-c279S1jTlTQYAIU+7VI1+F0b/QbcYDmr3CtRYyKmwkA=",
         "ref": "refs/heads/main",
-        "rev": "9f837e6a925c16ca61d65204462354d10cf353e6",
-        "revCount": 334,
+        "rev": "c99fdb36b625bd5ec96dc31af33cf4d965d608b6",
+        "revCount": 335,
         "type": "git",
         "url": "ssh://git@github.com/pleme-io/tatara"
       },
