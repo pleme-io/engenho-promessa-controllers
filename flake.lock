@@ -2049,11 +2049,11 @@
         "rust-overlay": "rust-overlay_3"
       },
       "locked": {
-        "lastModified": 1780316214,
-        "narHash": "sha256-X3EG0oxt03MegwC/MnQv1saoq9nphEGSSGEAj8mZQOg=",
+        "lastModified": 1780459148,
+        "narHash": "sha256-oIpiel88r8zV/WqTFwcGAjWXKOASHNzq7wjXQ6ORTvg=",
         "owner": "cachix",
         "repo": "devenv",
-        "rev": "d5e9138bae90fe199fbe5de7675014d76d28873b",
+        "rev": "493ed7ef062ba3972c06e60970fe5ebe014f5c33",
         "type": "github"
       },
       "original": {
@@ -10588,11 +10588,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780425859,
-        "narHash": "sha256-OHnoFgSbSq2o1/Zmorat+wrS9C8M/AYy0qFq3d8o/Yo=",
+        "lastModified": 1780431594,
+        "narHash": "sha256-tK3gxji0x8J1P8yJHzD9WknpOnR7WAXmVZQ/Zi0xASo=",
         "owner": "pleme-io",
         "repo": "substrate",
-        "rev": "5158d658457836869a60f4e047d1ca39ede57dd9",
+        "rev": "505f45d66d94bc8d28b07acd68026d848be708ff",
         "type": "github"
       },
       "original": {
@@ -11073,11 +11073,11 @@
         "substrate": "substrate_3"
       },
       "locked": {
-        "lastModified": 1780429287,
-        "narHash": "sha256-S67ZaZKgAKA9T1WE5zEqcYpaSe0ik7vkmpugsOzYiQQ=",
+        "lastModified": 1780459408,
+        "narHash": "sha256-a4UZ/FAhGyuoiEY2MLZKGCJ9nYHHN35y4thqYGiAK9A=",
         "ref": "refs/heads/main",
-        "rev": "25e3c5c8e9d89ff2f824857d26b53f4d7b247bb6",
-        "revCount": 144,
+        "rev": "a3245a0256469be0712c2f81556396c409c2de14",
+        "revCount": 145,
         "type": "git",
         "url": "ssh://git@github.com/pleme-io/tameshi"
       },
@@ -11099,11 +11099,11 @@
         "substrate": "substrate_5"
       },
       "locked": {
-        "lastModified": 1780444148,
-        "narHash": "sha256-Frs9TRd9t288FQkuL+007X/y6N9LnHlC7Ag+MxYFqV4=",
+        "lastModified": 1780460253,
+        "narHash": "sha256-PN4JCcDlh6xNYjtrTKLmEKxO7fJ7WgpEw1v136zGJus=",
         "ref": "refs/heads/main",
-        "rev": "3ee6df3baf5d6f8d826a09ad602a1cb6566d5876",
-        "revCount": 330,
+        "rev": "63f37159f524c52a10d9eee631454fd6463d336e",
+        "revCount": 331,
         "type": "git",
         "url": "ssh://git@github.com/pleme-io/tatara"
       },
