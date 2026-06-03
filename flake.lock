@@ -10484,11 +10484,11 @@
         "substrate": "substrate_6"
       },
       "locked": {
-        "lastModified": 1780431758,
-        "narHash": "sha256-Kr3puH1GvINctgqvYyMRuBVtKWLlhKiQi2tfqUgirc8=",
+        "lastModified": 1780479264,
+        "narHash": "sha256-YC7Wg9/JF9IBwV41RSb4d7uXwqePpu315iXyDZkjKgA=",
         "owner": "pleme-io",
         "repo": "shigoto",
-        "rev": "391a47959d0c29115c0fc98a7574b78105a09d65",
+        "rev": "59da4eedd8825059553ea8387ae42973db67870a",
         "type": "github"
       },
       "original": {
