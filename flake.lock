@@ -4737,11 +4737,11 @@
         "substrate": "substrate_4"
       },
       "locked": {
-        "lastModified": 1780724681,
-        "narHash": "sha256-TTHUV9spJd/QQhjCG5R+NISRIP/iktV7jIVBBn+DSaQ=",
+        "lastModified": 1780728251,
+        "narHash": "sha256-aHIikdZluQST1O2Az5JNlEfhk9+NuThtedvtiw39hIY=",
         "owner": "pleme-io",
         "repo": "forge",
-        "rev": "46165ef3f522bb3e1dc4af4e5ed8067c83913f82",
+        "rev": "c1faa28ca769db8d2ed7a8bbe7680207dc89b613",
         "type": "github"
       },
       "original": {
@@ -10549,11 +10549,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780730508,
-        "narHash": "sha256-PYqXF0LCCBVJWkF4cW1DHQhp1D3QHc7gX0h18S4FO8M=",
+        "lastModified": 1780730804,
+        "narHash": "sha256-uKWGLQLsSZ+Np3GnJAv06ftjDCwNhyuZgYxV3OdOA3E=",
         "owner": "pleme-io",
         "repo": "substrate",
-        "rev": "75a7a666a4820e451422be36e41f6f0c5c078ffd",
+        "rev": "2c9565f66aa9b7a4dbba6c343b8e7368c965e5ed",
         "type": "github"
       },
       "original": {
@@ -10636,11 +10636,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780602791,
-        "narHash": "sha256-+HVFgCc/68LjfQ6gsQ0Zo+Eh2eeJjXSsPkRDLwIk+Oo=",
+        "lastModified": 1780730804,
+        "narHash": "sha256-uKWGLQLsSZ+Np3GnJAv06ftjDCwNhyuZgYxV3OdOA3E=",
         "owner": "pleme-io",
         "repo": "substrate",
-        "rev": "9e80be208762f87caca6b01769e432714454587a",
+        "rev": "2c9565f66aa9b7a4dbba6c343b8e7368c965e5ed",
         "type": "github"
       },
       "original": {
@@ -10713,11 +10713,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780730508,
-        "narHash": "sha256-PYqXF0LCCBVJWkF4cW1DHQhp1D3QHc7gX0h18S4FO8M=",
+        "lastModified": 1780730804,
+        "narHash": "sha256-uKWGLQLsSZ+Np3GnJAv06ftjDCwNhyuZgYxV3OdOA3E=",
         "owner": "pleme-io",
         "repo": "substrate",
-        "rev": "75a7a666a4820e451422be36e41f6f0c5c078ffd",
+        "rev": "2c9565f66aa9b7a4dbba6c343b8e7368c965e5ed",
         "type": "github"
       },
       "original": {
@@ -11087,11 +11087,11 @@
         "substrate": "substrate_5"
       },
       "locked": {
-        "lastModified": 1780727140,
-        "narHash": "sha256-s7rPzTQiUbJpKfelULeFolNSsrzXgOQNZ0LrZ0U+Y2U=",
+        "lastModified": 1780732329,
+        "narHash": "sha256-e2WQ7HwdMJBVPP0NNAV2MnjAPIBuqkqNUuwOu45/0Gs=",
         "ref": "refs/heads/main",
-        "rev": "c7e0b1dc48136cdc17446d650dcca464cbf1d5ab",
-        "revCount": 370,
+        "rev": "9e0e57e2856209ddedf08e7a398dbe116ad84065",
+        "revCount": 372,
         "type": "git",
         "url": "ssh://git@github.com/pleme-io/tatara"
       },
