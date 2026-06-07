@@ -4737,11 +4737,11 @@
         "substrate": "substrate_4"
       },
       "locked": {
-        "lastModified": 1780775091,
-        "narHash": "sha256-MgTUB5e9SVFLLXGSC2tVrjuMQDKRrxKBb5fMCrxTXMk=",
+        "lastModified": 1780807711,
+        "narHash": "sha256-wuO2ZwrhJLovvtJeRZYHlb5tSDBB63CceH/flh5QlPA=",
         "owner": "pleme-io",
         "repo": "forge",
-        "rev": "c2e22f693fd68c994c89909b1715dc846e76e3aa",
+        "rev": "60c14c32fbb870c5e68f4012d329ee4050a50f9e",
         "type": "github"
       },
       "original": {
@@ -10497,11 +10497,11 @@
         "substrate": "substrate_7"
       },
       "locked": {
-        "lastModified": 1780806156,
-        "narHash": "sha256-oUVoV0pnMwy1GzGQQvzCN8qvhtEd7UlLkdhsz8TeSrc=",
+        "lastModified": 1780809625,
+        "narHash": "sha256-odtFku71hJA6IAMcLNSJ1UVseMiUA5TO2LLCvrRGk1Y=",
         "owner": "pleme-io",
         "repo": "shikumi",
-        "rev": "5c93fd9357a2b0dc9078c02f0b3a12296a9adbef",
+        "rev": "c38327b3346985ef2671f771f2ddcfd400623ebd",
         "type": "github"
       },
       "original": {
@@ -11087,11 +11087,11 @@
         "substrate": "substrate_5"
       },
       "locked": {
-        "lastModified": 1780805445,
-        "narHash": "sha256-ez0McVp4UYuCkoqU+WAWgH/alHFAA0lHfQpOTa+5Etw=",
+        "lastModified": 1780808884,
+        "narHash": "sha256-5BNBjYvqCBfbUCjt5SIKTfmBxZc1oVsd9u+AE6HY/ZU=",
         "ref": "refs/heads/main",
-        "rev": "76d18f31bc265c62a68fb9d2abd6285ef740c5b5",
-        "revCount": 378,
+        "rev": "8227d252965c4ed0e1af293df972ca650e91cc33",
+        "revCount": 380,
         "type": "git",
         "url": "ssh://git@github.com/pleme-io/tatara"
       },
