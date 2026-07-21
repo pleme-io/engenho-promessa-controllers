@@ -60,6 +60,7 @@ impl ReconcileCtx {
             zot_basic_auth: zot_basic_auth_from_env(),
             harbor_base_url: std::env::var("HARBOR_BASE_URL")
                 .unwrap_or_else(|_| "https://registry.secondfront.com".into()),
+            harbor_basic_auth: harbor_basic_auth_from_env(),
         };
         let engine = Arc::new(ReconcilerEngine::with_defaults(engine_config));
         // FluxCommit boot config — dry_run defaults true so untrusted
@@ -101,5 +102,20 @@ impl ReconcileCtx {
 fn zot_basic_auth_from_env() -> Option<reconciler_engine::BasicAuth> {
     let username = std::env::var("ZOT_USERNAME").ok()?;
     let password = std::env::var("ZOT_PASSWORD").ok()?;
+    Some(reconciler_engine::BasicAuth { username, password })
+}
+
+/// Read Second Front Harbor Basic-auth from env, same shape as
+/// [`zot_basic_auth_from_env`]. `None` when unset — the
+/// `HarborMirrorReconciler` only ever reaches this credential when
+/// `spec.flag_enabled` is `true`, which per the standing rule
+/// (`gameWardenForwarding.enabled: false`) it is not today. When the
+/// flag is eventually flipped, these env vars are expected to be
+/// mounted from a SOPS-encrypted Secret by the
+/// lareira-akeyless-validation chart, matching `ZOT_USERNAME`/
+/// `ZOT_PASSWORD`'s wiring above.
+fn harbor_basic_auth_from_env() -> Option<reconciler_engine::BasicAuth> {
+    let username = std::env::var("HARBOR_USERNAME").ok()?;
+    let password = std::env::var("HARBOR_PASSWORD").ok()?;
     Some(reconciler_engine::BasicAuth { username, password })
 }

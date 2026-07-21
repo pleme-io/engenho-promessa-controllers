@@ -41,7 +41,8 @@
 //!
 //! For D1 (this deliverable), the engine ships three concrete
 //! Reconcilers (CartorioAdmit full impl, GhcrTagRevoke full impl,
-//! HarborMirror flag-gated stub) and the ActionExecutor handles
+//! HarborMirror full impl behind a standing-off feature flag — see
+//! [`reconcilers::harbor_mirror`]) and the ActionExecutor handles
 //! `Compose` + `Noop` directly; other variants return an explicit
 //! `Failed` outcome with a `FOLLOWUP` doc-comment pointer.
 
@@ -146,7 +147,12 @@ impl ReconcilerEngine {
                 config.zot_base_url.clone(),
                 config.zot_basic_auth.clone(),
             ))
-            .register(HarborMirrorReconciler::new(config.harbor_base_url.clone()))
+            .register(HarborMirrorReconciler::new(
+                config.harbor_base_url.clone(),
+                config.harbor_basic_auth.clone(),
+                config.zot_base_url.clone(),
+                config.zot_basic_auth.clone(),
+            ))
             .build()
     }
 
@@ -229,14 +235,36 @@ pub struct EngineConfig {
     /// `https://registry.secondfront.com`. Reconciler is flag-gated;
     /// see [`HarborMirrorReconciler`].
     pub harbor_base_url: String,
+
+    /// Optional Basic-auth credentials for the Second Front Harbor
+    /// registry. `None` means the underlying `skopeo copy --dest-creds`
+    /// flag is omitted (anonymous push — will fail against Harbor's
+    /// real auth policy; only useful in tests against an
+    /// anonymous-write mock). Sourced from `HARBOR_USERNAME`/
+    /// `HARBOR_PASSWORD` env at the binary's boot layer, same shape as
+    /// [`EngineConfig::zot_basic_auth`]. Only ever reaches skopeo when
+    /// [`HarborMirrorReconciler`]'s flag-gate is on — see that
+    /// module's doc comment.
+    pub harbor_basic_auth: Option<BasicAuth>,
 }
 
-/// HTTP Basic-auth credentials — used by GhcrTagRevoke when talking
-/// to Zot.
+/// HTTP Basic-auth credentials. Used by GhcrTagRevoke when talking to
+/// Zot, and reused by HarborMirror for both legs of its `skopeo copy`
+/// (Zot as source, Harbor as destination) — one typed credential shape
+/// fleet-wide instead of a per-reconciler ad-hoc pair of strings.
 #[derive(Clone, Debug)]
 pub struct BasicAuth {
     pub username: String,
     pub password: String,
+}
+
+impl BasicAuth {
+    /// Render as skopeo's `--src-creds`/`--dest-creds` value:
+    /// `USERNAME[:PASSWORD]` (skopeo-copy(1)).
+    #[must_use]
+    pub fn as_skopeo_creds(&self) -> String {
+        format!("{}:{}", self.username, self.password)
+    }
 }
 
 /// `ActionExecutor` — wraps [`ReconcilerEngine`] and handles the
